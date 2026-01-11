@@ -59,38 +59,31 @@ contract DepositVault is Ownable, ReentrancyGuard {
     // 配置合约地址（用于获取代币地址和借贷配置）
     ITreasuryConfigCore public configCore;
     
-    // 存款记录：depositor => depositId => DepositInfo
-    mapping(address => mapping(uint256 => DepositInfo)) public deposits;
-    mapping(address => uint256) public depositCount;
+    // 全局存款记录：depositId => DepositInfo（全局唯一ID）
+    mapping(uint256 => DepositInfo) public deposits;
+    uint256 public depositCount; // 全局存款计数器
     
-    // 可领取存款索引：recipient => depositor => depositId[]
-    // 用于快速查询某个接收地址可以领取的所有存款
-    mapping(address => mapping(address => uint256[])) public claimableDeposits;
-    mapping(address => mapping(address => uint256)) public claimableDepositCount;
+    // 只维护活跃列表：recipient => depositId[]（只包含未使用的）
+    mapping(address => uint256[]) public recipientDeposits;
     
-    // 反向索引：recipient => (depositor, depositId)[]，用于直接查询某个接收地址的所有存款
-    struct ClaimableDeposit {
-        address depositor;
-        uint256 depositId;
-    }
-    mapping(address => ClaimableDeposit[]) public recipientDeposits;
-    mapping(address => uint256) public recipientDepositCount;
+    // depositor => depositId[]（只包含未使用的）
+    mapping(address => uint256[]) public depositorDeposits;
     
     // 可选：地址B白名单（如果启用）
     mapping(address => bool) public validRecipients;
     bool public whitelistEnabled;
     
-    // 可选：取回时间锁（默认7天）
-    uint256 public recoveryDelay = 7 days;
+    // 可选：取回时间锁（默认3天）
+    uint256 public recoveryDelay = 3 days;
     
     struct DepositInfo {
+        address depositor;          // 存款人地址（源地址）
         address token;              // 底层代币地址
         address yieldToken;         // 凭证代币地址
         uint256 yieldAmount;        // 凭证代币数量
-        address intendedRecipient;  // 预期的接收地址B（仅用于记录）
+        address intendedRecipient;  // 预期的接收地址B（中转地址）
         uint256 depositTime;        // 存款时间
-        bool claimed;               // 是否已被地址B领取
-        bool recovered;            // 是否已被地址A取回
+        bool used;                  // 是否已被使用（领取或取回）
     }
     
     event Deposited(
@@ -126,8 +119,7 @@ contract DepositVault is Ownable, ReentrancyGuard {
     error InvalidAddress();
     error InvalidAmount();
     error DepositNotFound();
-    error AlreadyClaimed();
-    error AlreadyRecovered();
+    error AlreadyUsed(); // 已被使用（领取或取回）
     error RecoveryNotAvailable();
     error RecipientNotWhitelisted();
     error InvalidRecipient(); // 不是预期的接收地址
@@ -151,7 +143,7 @@ contract DepositVault is Ownable, ReentrancyGuard {
      * @dev 地址A存入借贷池，凭证代币托管在合约中
      * @param token 底层代币地址
      * @param amount 存入金额
-     * @param intendedRecipient 预期的接收地址B（可选，可以为 address(0)）
+     * @param intendedRecipient 预期的接收地址B（中转地址，必须指定）
      * @return depositId 存款ID
      */
     function deposit(
@@ -161,6 +153,7 @@ contract DepositVault is Ownable, ReentrancyGuard {
     ) external nonReentrant returns (uint256 depositId) {
         if (token == address(0)) revert InvalidAddress();
         if (amount == 0) revert InvalidAmount();
+        if (intendedRecipient == address(0)) revert InvalidAddress();
         
         // 1. 获取 tokenKey
         string memory tokenKey = configCore.getTokenKey(token);
@@ -210,29 +203,22 @@ contract DepositVault is Ownable, ReentrancyGuard {
         uint256 yieldAmount = yieldAfter - yieldBefore;
         if (yieldAmount == 0) revert NoYieldTokenReceived();
         
-        // 9. 记录存款信息
-        depositId = depositCount[msg.sender]++;
-        deposits[msg.sender][depositId] = DepositInfo({
+        // 9. 记录存款信息（使用全局唯一ID）
+        depositId = depositCount++;
+        
+        deposits[depositId] = DepositInfo({
+            depositor: msg.sender,
             token: token,
             yieldToken: yieldToken,
             yieldAmount: yieldAmount,
             intendedRecipient: intendedRecipient,
             depositTime: block.timestamp,
-            claimed: false,
-            recovered: false
+            used: false
         });
         
-        // 10. 如果指定了接收地址，添加到可领取索引
-        if (intendedRecipient != address(0)) {
-            claimableDeposits[intendedRecipient][msg.sender].push(depositId);
-            claimableDepositCount[intendedRecipient][msg.sender]++;
-            // 同时添加到反向索引
-            recipientDeposits[intendedRecipient].push(ClaimableDeposit({
-                depositor: msg.sender,
-                depositId: depositId
-            }));
-            recipientDepositCount[intendedRecipient]++;
-        }
+        // 10. 添加到活跃列表（只记录未使用的）
+        depositorDeposits[msg.sender].push(depositId);
+        recipientDeposits[intendedRecipient].push(depositId);
         
         emit Deposited(
             msg.sender,
@@ -247,24 +233,20 @@ contract DepositVault is Ownable, ReentrancyGuard {
     
     /**
      * @dev 地址B自取凭证代币（Pull模式）
-     * @param depositor 地址A（源地址）
-     * @param depositId 存款ID
+     * @param depositId 全局存款ID
      * @notice 只能领取 intendedRecipient 指向自己的存款
      * @notice 前端通过 getClaimableDeposits(msg.sender) 查询可领取的存款列表，然后调用此函数领取
      */
-    function claim(address depositor, uint256 depositId) external nonReentrant {
+    function claim(uint256 depositId) external nonReentrant {
         address recipient = msg.sender;
         
-        DepositInfo storage depositInfo = deposits[depositor][depositId];
+        DepositInfo storage depositInfo = deposits[depositId];
         
         // 验证存款是否存在
         if (depositInfo.yieldAmount == 0) revert DepositNotFound();
         
-        // 验证：不能重复领取
-        if (depositInfo.claimed) revert AlreadyClaimed();
-        
-        // 验证：不能领取已取回的存款
-        if (depositInfo.recovered) revert AlreadyRecovered();
+        // 验证：不能重复使用（已领取或已取回）
+        if (depositInfo.used) revert AlreadyUsed();
         
         // 验证：只有 intendedRecipient 指向自己的才能领取
         if (depositInfo.intendedRecipient != recipient) {
@@ -279,10 +261,14 @@ contract DepositVault is Ownable, ReentrancyGuard {
         // 转账凭证代币给地址B
         IERC20(depositInfo.yieldToken).safeTransfer(recipient, depositInfo.yieldAmount);
         
-        depositInfo.claimed = true;
+        depositInfo.used = true;
+        
+        // 从活跃列表中移除
+        _removeFromList(depositorDeposits[depositInfo.depositor], depositId);
+        _removeFromList(recipientDeposits[depositInfo.intendedRecipient], depositId);
         
         emit Claimed(
-            depositor,
+            depositInfo.depositor,
             depositId,
             recipient,
             depositInfo.yieldToken,
@@ -292,13 +278,19 @@ contract DepositVault is Ownable, ReentrancyGuard {
     
     /**
      * @dev 地址A取回凭证代币（如果地址B输入错误或没来取）
-     * @param depositId 存款ID
+     * @param depositId 全局存款ID
      */
     function recover(uint256 depositId) external nonReentrant {
-        DepositInfo storage depositInfo = deposits[msg.sender][depositId];
+        DepositInfo storage depositInfo = deposits[depositId];
         if (depositInfo.yieldAmount == 0) revert DepositNotFound();
-        if (depositInfo.claimed) revert AlreadyClaimed();
-        if (depositInfo.recovered) revert AlreadyRecovered();
+        
+        // 验证：必须是存款人本人才能取回
+        if (depositInfo.depositor != msg.sender) {
+            revert InvalidRecipient(); // 不是存款人
+        }
+        
+        // 验证：不能重复使用（已领取或已取回）
+        if (depositInfo.used) revert AlreadyUsed();
         
         // 时间锁检查
         if (block.timestamp < depositInfo.depositTime + recoveryDelay) {
@@ -308,7 +300,11 @@ contract DepositVault is Ownable, ReentrancyGuard {
         // 转账凭证代币回地址A
         IERC20(depositInfo.yieldToken).safeTransfer(msg.sender, depositInfo.yieldAmount);
         
-        depositInfo.recovered = true;
+        depositInfo.used = true;
+        
+        // 从活跃列表中移除
+        _removeFromList(depositorDeposits[depositInfo.depositor], depositId);
+        _removeFromList(recipientDeposits[depositInfo.intendedRecipient], depositId);
         
         emit Recovered(
             msg.sender,
@@ -319,114 +315,42 @@ contract DepositVault is Ownable, ReentrancyGuard {
     }
     
     /**
-     * @dev 查询存款信息
+     * @dev 查询存款信息（通过全局存款ID）
      */
-    function getDeposit(address depositor, uint256 depositId)
+    function getDeposit(uint256 depositId)
         external
         view
         returns (DepositInfo memory)
     {
-        return deposits[depositor][depositId];
+        return deposits[depositId];
     }
     
     /**
-     * @dev 查询地址A的所有存款ID
+     * @dev 查询地址A的所有未使用存款ID（活跃列表）
      */
     function getDepositIds(address depositor) external view returns (uint256[] memory) {
-        uint256 count = depositCount[depositor];
-        uint256[] memory ids = new uint256[](count);
-        for (uint256 i = 0; i < count; i++) {
-            ids[i] = i;
-        }
-        return ids;
+        return depositorDeposits[depositor];
     }
     
     /**
-     * @dev 查询地址A的存款数量
+     * @dev 查询地址A的未使用存款数量
      */
     function getDepositCount(address depositor) external view returns (uint256) {
-        return depositCount[depositor];
+        return depositorDeposits[depositor].length;
     }
     
-    /**
-     * @dev 查询接收地址可以领取的所有存款ID（按存款人分组）
-     * @param recipient 接收地址（中转地址）
-     * @param depositor 存款人地址（源地址），如果为 address(0) 则返回所有存款人的
-     * @return depositIds 存款ID数组
-     */
-    function getClaimableDepositIds(address recipient, address depositor)
-        external
-        view
-        returns (uint256[] memory)
-    {
-        if (depositor == address(0)) {
-            // 如果 depositor 为 0，需要遍历所有存款人（这个操作可能很昂贵）
-            // 暂时返回空数组，建议前端通过事件查询
-            return new uint256[](0);
-        }
-        return claimableDeposits[recipient][depositor];
-    }
     
     /**
-     * @dev 查询接收地址可以领取的存款数量（按存款人分组）
+     * @dev 查询接收地址可以领取的所有存款（活跃列表）
      * @param recipient 接收地址（中转地址）
-     * @param depositor 存款人地址（源地址）
-     * @return count 可领取的存款数量
-     */
-    function getClaimableDepositCount(address recipient, address depositor)
-        external
-        view
-        returns (uint256)
-    {
-        return claimableDepositCount[recipient][depositor];
-    }
-    
-    /**
-     * @dev 查询接收地址可以领取的所有存款（包括所有存款人）
-     * @param recipient 接收地址（中转地址）
-     * @return depositors 存款人地址数组
-     * @return depositIds 存款ID数组（对应 depositors）
-     * @notice 返回所有未领取、未取回、且 intendedRecipient 指向 recipient 的存款
+     * @return depositIds 全局存款ID列表（只包含未使用的）
      */
     function getClaimableDeposits(address recipient)
         external
         view
-        returns (
-            address[] memory depositors,
-            uint256[] memory depositIds
-        )
+        returns (uint256[] memory depositIds)
     {
-        uint256 count = recipientDepositCount[recipient];
-        if (count == 0) {
-            return (new address[](0), new uint256[](0));
-        }
-        
-        ClaimableDeposit[] memory allDeposits = recipientDeposits[recipient];
-        
-        // 先计算可领取的数量（必须满足：未领取、未取回、且 intendedRecipient 指向 recipient）
-        uint256 claimableCount = 0;
-        for (uint256 i = 0; i < count; i++) {
-            DepositInfo memory info = deposits[allDeposits[i].depositor][allDeposits[i].depositId];
-            if (!info.claimed && !info.recovered && info.intendedRecipient == recipient) {
-                claimableCount++;
-            }
-        }
-        
-        // 创建结果数组
-        address[] memory resultDepositors = new address[](claimableCount);
-        uint256[] memory resultDepositIds = new uint256[](claimableCount);
-        
-        uint256 index = 0;
-        for (uint256 i = 0; i < count; i++) {
-            DepositInfo memory info = deposits[allDeposits[i].depositor][allDeposits[i].depositId];
-            if (!info.claimed && !info.recovered && info.intendedRecipient == recipient) {
-                resultDepositors[index] = allDeposits[i].depositor;
-                resultDepositIds[index] = allDeposits[i].depositId;
-                index++;
-            }
-        }
-        
-        return (resultDepositors, resultDepositIds);
+        return recipientDeposits[recipient];
     }
     
     /**
@@ -439,31 +363,20 @@ contract DepositVault is Ownable, ReentrancyGuard {
         view
         returns (uint256 count)
     {
-        uint256 total = recipientDepositCount[recipient];
-        count = 0;
-        ClaimableDeposit[] memory allDeposits = recipientDeposits[recipient];
-        for (uint256 i = 0; i < total; i++) {
-            DepositInfo memory info = deposits[allDeposits[i].depositor][allDeposits[i].depositId];
-            // 必须满足：未领取、未取回、且 intendedRecipient 指向 recipient
-            if (!info.claimed && !info.recovered && info.intendedRecipient == recipient) {
-                count++;
-            }
-        }
-        return count;
+        return recipientDeposits[recipient].length;
     }
     
     /**
      * @dev 查询凭证代币对应的底层资产数量（折算成USDT）
-     * @param depositor 存款人地址
-     * @param depositId 存款ID
+     * @param depositId 全局存款ID
      * @return underlyingAmount 底层资产数量（wei）
      */
-    function getUnderlyingAmount(address depositor, uint256 depositId)
+    function getUnderlyingAmount(uint256 depositId)
         external
         view
         returns (uint256 underlyingAmount)
     {
-        DepositInfo memory info = deposits[depositor][depositId];
+        DepositInfo memory info = deposits[depositId];
         if (info.yieldAmount == 0) return 0;
         
         // 1. 获取 tokenKey
@@ -525,6 +438,25 @@ contract DepositVault is Ownable, ReentrancyGuard {
     }
     
     // ============ Internal Functions ============
+    
+    /**
+     * @dev 从数组中移除指定元素（简化版：查找并删除）
+     * @param list 要操作的数组
+     * @param value 要删除的值
+     */
+    function _removeFromList(uint256[] storage list, uint256 value) internal {
+        uint256 length = list.length;
+        for (uint256 i = 0; i < length; i++) {
+            if (list[i] == value) {
+                // 找到后，用最后一个元素替换，然后删除最后一个
+                if (i != length - 1) {
+                    list[i] = list[length - 1];
+                }
+                list.pop();
+                return;
+            }
+        }
+    }
     
     /**
      * @dev 解析借贷配置（从 configCore 获取）

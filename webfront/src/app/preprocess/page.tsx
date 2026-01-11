@@ -210,13 +210,13 @@ function PreprocessPage() {
       const deposits: Array<{ depositor: string; depositId: string; info: DepositInfo; underlyingAmount: bigint }> = []
       for (const item of depositsList) {
         try {
-          const info = await getDeposit(vaultAddress, item.depositor, item.depositId)
-          // 只添加未领取且未取回的存款
-          if (info && !info.claimed && !info.recovered) {
+          const info = await getDeposit(vaultAddress, item.depositId)
+          // 只添加未使用的存款
+          if (info && !info.used && info.intendedRecipient.toLowerCase() === address.toLowerCase()) {
             // 查询底层资产数量（USDT）
-            const underlyingAmount = await getUnderlyingAmount(vaultAddress, item.depositor, item.depositId)
+            const underlyingAmount = await getUnderlyingAmount(vaultAddress, item.depositId)
             deposits.push({
-              depositor: item.depositor,
+              depositor: info.depositor,
               depositId: item.depositId,
               info,
               underlyingAmount,
@@ -271,18 +271,17 @@ function PreprocessPage() {
 
       for (const depositId of depositIds) {
         try {
-          const info = await getDeposit(vaultAddress, address, depositId)
+          const info = await getDeposit(vaultAddress, depositId)
           if (!info) continue
 
-          // 检查条件：未领取、未取回、且超过 recoveryDelay
+          // 检查条件：未使用、且超过 recoveryDelay
           const depositTime = BigInt(info.depositTime)
-          const canRecover = !info.claimed && 
-                            !info.recovered && 
+          const canRecover = !info.used && 
                             (now >= depositTime + delay)
 
           if (canRecover) {
             // 查询底层资产数量（USDT）
-            const underlyingAmount = await getUnderlyingAmount(vaultAddress, address, depositId)
+            const underlyingAmount = await getUnderlyingAmount(vaultAddress, depositId)
             recoverable.push({
               depositId,
               info,
@@ -573,15 +572,12 @@ function PreprocessPage() {
                               if (!vaultAddress) return
                               const result = await claim({
                                 vaultAddress,
-                                depositor: item.depositor,
                                 depositId: item.depositId,
                               })
                               showSuccess('领取成功')
                               processingSheet.open({ txHash: result.txHash, type: 'claim' })
                               // 从列表中移除
-                              setClaimableDeposits(prev => prev.filter(p => 
-                                !(p.depositor.toLowerCase() === item.depositor.toLowerCase() && p.depositId === item.depositId)
-                              ))
+                              setClaimableDeposits(prev => prev.filter(p => p.depositId !== item.depositId))
                             } catch (error) {
                               showError(error instanceof Error ? error.message : '领取失败')
                             }

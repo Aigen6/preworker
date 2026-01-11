@@ -16,13 +16,13 @@ type ContractABI = any[]
  * DepositVault 存款信息类型
  */
 export interface DepositInfo {
+  depositor: string
   token: string
   yieldToken: string
   yieldAmount: string
   intendedRecipient: string
   depositTime: string
-  claimed: boolean
-  recovered: boolean
+  used: boolean
 }
 
 /**
@@ -167,7 +167,7 @@ export function useDepositVault() {
    * 地址B领取凭证代币
    */
   const claim = useCallback(
-    async (params: { vaultAddress: string; depositor: string; depositId: string }) => {
+    async (params: { vaultAddress: string; depositId: string }) => {
       if (!walletManager) {
         throw new Error('钱包未连接')
       }
@@ -188,7 +188,7 @@ export function useDepositVault() {
           params.vaultAddress,
           DEPOSIT_VAULT_ABI as unknown as ContractABI,
           'claim',
-          [params.depositor, params.depositId],
+          [params.depositId],
           claimGasOptions,
           chainType
         )
@@ -248,10 +248,10 @@ export function useDepositVault() {
   )
 
   /**
-   * 查询存款信息
+   * 查询存款信息（通过全局存款ID）
    */
   const getDeposit = useCallback(
-    async (vaultAddress: string, depositor: string, depositId: string): Promise<DepositInfo | null> => {
+    async (vaultAddress: string, depositId: string): Promise<DepositInfo | null> => {
       if (!walletManager) {
         throw new Error('钱包未连接')
       }
@@ -268,22 +268,22 @@ export function useDepositVault() {
           vaultAddress,
           DEPOSIT_VAULT_ABI as unknown as ContractABI,
           'getDeposit',
-          [depositor, depositId],
+          [depositId],
           chainType
-        ) as [string, string, bigint, string, bigint, boolean, boolean]
+        ) as [string, string, string, bigint, string, bigint, boolean]
 
         if (!result || !result[0] || result[0] === '0x0000000000000000000000000000000000000000') {
           return null
         }
 
         return {
-          token: result[0],
-          yieldToken: result[1],
-          yieldAmount: result[2].toString(),
-          intendedRecipient: result[3],
-          depositTime: result[4].toString(),
-          claimed: result[5],
-          recovered: result[6],
+          depositor: result[0],
+          token: result[1],
+          yieldToken: result[2],
+          yieldAmount: result[3].toString(),
+          intendedRecipient: result[4],
+          depositTime: result[5].toString(),
+          used: result[6],
         }
       } catch (err) {
         console.error('查询存款信息失败:', err)
@@ -449,10 +449,10 @@ export function useDepositVault() {
   )
 
   /**
-   * 查询接收地址的所有可领取存款（包括所有存款人）
+   * 查询接收地址的所有可领取存款（返回全局存款ID列表）
    */
   const getAllClaimableDeposits = useCallback(
-    async (vaultAddress: string, recipient: string): Promise<Array<{ depositor: string; depositId: string }>> => {
+    async (vaultAddress: string, recipient: string): Promise<Array<{ depositId: string }>> => {
       if (!walletManager) {
         throw new Error('钱包未连接')
       }
@@ -471,19 +471,17 @@ export function useDepositVault() {
           'getClaimableDeposits',
           [recipient],
           chainType
-        ) as [string[], bigint[]]
+        ) as bigint[]
 
-        if (!result || !Array.isArray(result) || result.length !== 2) {
+        if (!result || !Array.isArray(result)) {
           return []
         }
 
-        const [depositors, depositIds] = result
-        const deposits: Array<{ depositor: string; depositId: string }> = []
+        const deposits: Array<{ depositId: string }> = []
         
-        for (let i = 0; i < depositors.length; i++) {
+        for (let i = 0; i < result.length; i++) {
           deposits.push({
-            depositor: depositors[i],
-            depositId: depositIds[i].toString(),
+            depositId: result[i].toString(),
           })
         }
 
@@ -535,7 +533,7 @@ export function useDepositVault() {
    * 查询凭证代币对应的底层资产数量（折算成USDT）
    */
   const getUnderlyingAmount = useCallback(
-    async (vaultAddress: string, depositor: string, depositId: string): Promise<bigint> => {
+    async (vaultAddress: string, depositId: string): Promise<bigint> => {
       if (!walletManager) {
         throw new Error('钱包未连接')
       }
@@ -552,7 +550,7 @@ export function useDepositVault() {
           vaultAddress,
           DEPOSIT_VAULT_ABI as unknown as ContractABI,
           'getUnderlyingAmount',
-          [depositor, depositId],
+          [depositId],
           chainType
         ) as bigint
 

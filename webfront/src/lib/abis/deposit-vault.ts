@@ -19,7 +19,6 @@ export const DEPOSIT_VAULT_ABI = [
     type: 'function',
     name: 'claim',
     inputs: [
-      { name: 'depositor', type: 'address' },
       { name: 'depositId', type: 'uint256' },
     ],
     outputs: [],
@@ -36,20 +35,19 @@ export const DEPOSIT_VAULT_ABI = [
     type: 'function',
     name: 'getDeposit',
     inputs: [
-      { name: 'depositor', type: 'address' },
       { name: 'depositId', type: 'uint256' },
     ],
     outputs: [
       {
         type: 'tuple',
         components: [
+          { name: 'depositor', type: 'address' },
           { name: 'token', type: 'address' },
           { name: 'yieldToken', type: 'address' },
           { name: 'yieldAmount', type: 'uint256' },
           { name: 'intendedRecipient', type: 'address' },
           { name: 'depositTime', type: 'uint256' },
-          { name: 'claimed', type: 'bool' },
-          { name: 'recovered', type: 'bool' },
+          { name: 'used', type: 'bool' },
         ],
       },
     ],
@@ -94,7 +92,6 @@ export const DEPOSIT_VAULT_ABI = [
     name: 'getClaimableDeposits',
     inputs: [{ name: 'recipient', type: 'address' }],
     outputs: [
-      { name: 'depositors', type: 'address[]' },
       { name: 'depositIds', type: 'uint256[]' },
     ],
     stateMutability: 'view',
@@ -117,7 +114,6 @@ export const DEPOSIT_VAULT_ABI = [
     type: 'function',
     name: 'getUnderlyingAmount',
     inputs: [
-      { name: 'depositor', type: 'address' },
       { name: 'depositId', type: 'uint256' },
     ],
     outputs: [{ name: 'underlyingAmount', type: 'uint256' }],
