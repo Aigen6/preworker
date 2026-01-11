@@ -31,6 +31,16 @@ contracts/broadcast/
 **/.env
 **/.env.local
 
+# Secrets and tokens (extra protection)
+*secret*
+*token*
+*password*
+*key*
+*.pem
+*.key
+*.p12
+*.pfx
+
 # IDE
 .vscode/
 .idea/
