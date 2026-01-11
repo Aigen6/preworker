@@ -1,0 +1,39 @@
+# Nginx 配置示例 - 纯 SPA 模式
+# 所有路由都返回 index.html，由客户端路由处理
+
+server {
+    listen 80;
+    server_name localhost;
+    root /path/to/webfront/out;
+    index index.html;
+
+    # X-Forwarded-* headers for reverse proxy support
+    # These headers ensure correct host information is passed when behind a reverse proxy
+    real_ip_header X-Forwarded-For;
+    set_real_ip_from 0.0.0.0/0;
+
+    # Content Security Policy
+    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'; connect-src 'self' http: https: ws: wss: data: blob:;" always;
+
+    # 处理静态资源
+    location /_next/static {
+        alias /path/to/webfront/out/_next/static;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # 处理其他静态文件（图片、字体等）
+    location ~* \.(jpg|jpeg|png|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # 所有路由都返回 index.html（SPA 模式）
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 404 处理
+    error_page 404 /index.html;
+}
+

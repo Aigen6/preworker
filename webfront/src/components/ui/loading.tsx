@@ -1,0 +1,156 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
+
+interface LoadingProps {
+  isLoading?: boolean
+  className?: string
+}
+
+export function Loading({ isLoading = true, className = '' }: LoadingProps) {
+  const [show, setShow] = useState(isLoading)
+
+  useEffect(() => {
+    if (isLoading) {
+      setShow(true)
+    } else {
+      // 延迟隐藏loading，确保动画完成
+      const timer = setTimeout(() => {
+        setShow(false)
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [isLoading])
+
+  if (!show) return null
+
+  return (
+    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-base animate-fade-in ${className}`}>
+      <div className="flex flex-col items-center space-y-4">
+        {/* 旋转的loading图标 */}
+        <div className="animate-spin">
+          <svg 
+            width="60" 
+            height="60" 
+            viewBox="0 0 152 141" 
+            fill="none" 
+            xmlns="http://www.w3.org/2000/svg"
+            className="text-primary"
+          >
+            <ellipse cx="78.012" cy="70.8916" rx="57.61" ry="55.225" fill="currentColor"/>
+            <ellipse cx="145.809" cy="21.5416" rx="6.12873" ry="5.875" fill="currentColor"/>
+            <ellipse cx="16.3433" cy="7.83333" rx="8.17163" ry="7.83333" fill="currentColor"/>
+            <ellipse cx="8.17163" cy="104.183" rx="4.08582" ry="3.91667" fill="currentColor"/>
+            <ellipse cx="135.241" cy="125.725" rx="2.04291" ry="1.95833" fill="currentColor"/>
+            <path d="M89.7761 53.5604C94.3643 53.5605 98.0983 57.1076 98.0983 61.4657L98.1003 66.621C98.1003 66.9988 97.9421 67.3656 97.6608 67.6327C97.3777 67.9017 96.9961 68.0525 96.5944 68.0526C94.9452 68.0526 93.6033 69.327 93.6032 70.8934C93.6032 72.46 94.9451 73.7343 96.5944 73.7343C97.4259 73.7344 98.1003 74.376 98.1003 75.1659V80.3192C98.1003 84.6773 94.3682 88.2225 89.78 88.2225H66.2458C61.6578 88.2223 57.9235 84.6772 57.9235 80.3192V75.1659C57.9235 74.3759 58.5987 73.7343 59.4304 73.7343C61.0816 73.7342 62.4235 72.4599 62.4235 70.8934C62.4234 69.3671 61.1357 68.2187 59.4304 68.2186C59.0307 68.2186 58.6491 68.0676 58.3659 67.7987C58.0827 67.5297 57.9235 67.1648 57.9235 66.787L57.9274 61.4657C57.9274 57.1076 61.6605 53.5604 66.2487 53.5604H89.7761ZM78.0124 63.4843C77.4459 63.4843 76.9355 63.7858 76.6804 64.2704L75.2165 67.0887L71.9499 67.5409C71.3855 67.6172 70.9236 67.9838 70.7448 68.4989C70.568 69.014 70.7101 69.5713 71.1198 69.9491L73.488 72.1395L72.9304 75.2362C72.8339 75.7704 73.0603 76.3013 73.5222 76.62C73.7832 76.7974 74.0869 76.8885 74.3942 76.8885C74.6293 76.8885 74.8667 76.8332 75.0837 76.7245L78.0124 75.2635L80.9352 76.7206C81.4415 76.9782 82.0426 76.9386 82.5026 76.618C82.9665 76.3013 83.1928 75.7704 83.0964 75.2362L82.5368 72.1395L84.905 69.9491C85.3167 69.5713 85.4597 69.014 85.2809 68.4989C85.1042 67.9837 84.6412 67.6173 84.0827 67.5428L80.8112 67.0887L79.3464 64.2723C79.0953 63.7877 78.5848 63.4862 78.0163 63.4843H78.0124Z" fill="#161616"/>
+            <ellipse cx="87.0279" cy="3.52498" rx="2.04291" ry="1.95833" fill="currentColor"/>
+            <ellipse cx="51.0727" cy="138.258" rx="2.86007" ry="2.74167" fill="currentColor"/>
+            <ellipse cx="99.6939" cy="133.95" rx="0.817163" ry="0.783333" fill="currentColor"/>
+            <ellipse cx="139.326" cy="86.5583" rx="2.04291" ry="1.95833" fill="currentColor"/>
+            <ellipse cx="0.817163" cy="58.75" rx="0.817163" ry="0.783333" fill="currentColor"/>
+          </svg>
+        </div>
+        
+        {/* Loading文字 */}
+        <div className="text-primary text-sm font-medium animate-pulse">
+          Loading...
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// 全局页面loading组件
+export function PageLoading() {
+  const pathname = usePathname()
+
+  useEffect(() => {
+    // 当React组件加载完成后，隐藏内联的loading
+    const hideInitialLoading = () => {
+      const initialLoading = document.getElementById('initial-loading')
+      if (initialLoading) {
+        initialLoading.style.opacity = '0'
+        initialLoading.style.transition = 'opacity 0.3s ease-out'
+        setTimeout(() => {
+          initialLoading.style.display = 'none'
+        }, 300)
+      }
+    }
+
+    // 确保DOM完全渲染后再隐藏loading
+    const timer = setTimeout(hideInitialLoading, 500)
+
+    // 监听自定义事件：开始导航，展示全屏loading遮罩
+    const handleNavStart = () => {
+      // 复用 initial overlay 的样式与结构
+      let overlay = document.getElementById('initial-loading')
+      if (!overlay) {
+        overlay = document.createElement('div')
+        overlay.id = 'initial-loading'
+        overlay.innerHTML = `
+          <div class="spinner">
+            <svg width="60" height="60" viewBox="0 0 152 141" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <ellipse cx="78.012" cy="70.8916" rx="57.61" ry="55.225" fill="var(--primary)"/>
+              <ellipse cx="145.809" cy="21.5416" rx="6.12873" ry="5.875" fill="var(--primary)"/>
+              <ellipse cx="16.3433" cy="7.83333" rx="8.17163" ry="7.83333" fill="var(--primary)"/>
+              <ellipse cx="8.17163" cy="104.183" rx="4.08582" ry="3.91667" fill="var(--primary)"/>
+              <ellipse cx="135.241" cy="125.725" rx="2.04291" ry="1.95833" fill="var(--primary)"/>
+              <path d="M89.7761 53.5604C94.3643 53.5605 98.0983 57.1076 98.0983 61.4657L98.1003 66.621C98.1003 66.9988 97.9421 67.3656 97.6608 67.6327C97.3777 67.9017 96.9961 68.0525 96.5944 68.0526C94.9452 68.0526 93.6033 69.327 93.6032 70.8934C93.6032 72.46 94.9451 73.7343 96.5944 73.7343C97.4259 73.7344 98.1003 74.376 98.1003 75.1659V80.3192C98.1003 84.6773 94.3682 88.2225 89.78 88.2225H66.2458C61.6578 88.2223 57.9235 84.6772 57.9235 80.3192V75.1659C57.9235 74.3759 58.5987 73.7343 59.4304 73.7343C61.0816 73.7342 62.4235 72.4599 62.4235 70.8934C62.4234 69.3671 61.1357 68.2187 59.4304 68.2186C59.0307 68.2186 58.6491 68.0676 58.3659 67.7987C58.0827 67.5297 57.9235 67.1648 57.9235 66.787L57.9274 61.4657C57.9274 57.1076 61.6605 53.5604 66.2487 53.5604H89.7761ZM78.0124 63.4843C77.4459 63.4843 76.9355 63.7858 76.6804 64.2704L75.2165 67.0887L71.9499 67.5409C71.3855 67.6172 70.9236 67.9838 70.7448 68.4989C70.568 69.014 70.7101 69.5713 71.1198 69.9491L73.488 72.1395L72.9304 75.2362C72.8339 75.7704 73.0603 76.3013 73.5222 76.62C73.7832 76.7974 74.0869 76.8885 74.3942 76.8885C74.6293 76.8885 74.8667 76.8332 75.0837 76.7245L78.0124 75.2635L80.9352 76.7206C81.4415 76.9782 82.0426 76.9386 82.5026 76.618C82.9665 76.3013 83.1928 75.7704 83.0964 75.2362L82.5368 72.1395L84.905 69.9491C85.3167 69.5713 85.4597 69.014 85.2809 68.4989C85.1042 67.9837 84.6412 67.6173 84.0827 67.5428L80.8112 67.0887L79.3464 64.2723C79.0953 63.7877 78.5848 63.4862 78.0163 63.4843H78.0124Z" fill="#161616"/>
+              <ellipse cx="87.0279" cy="3.52498" rx="2.04291" ry="1.95833" fill="var(--primary)"/>
+              <ellipse cx="51.0727" cy="138.258" rx="2.86007" ry="2.74167" fill="var(--primary)"/>
+              <ellipse cx="99.6939" cy="133.95" rx="0.817163" ry="0.783333" fill="var(--primary)"/>
+              <ellipse cx="139.326" cy="86.5583" rx="2.04291" ry="1.95833" fill="var(--primary)"/>
+              <ellipse cx="0.817163" cy="58.75" rx="0.817163" ry="0.783333" fill="var(--primary)"/>
+            </svg>
+          </div>
+          <div class="text">Loading...</div>
+        `
+        document.body.appendChild(overlay)
+      }
+      overlay.style.display = 'flex'
+      requestAnimationFrame(() => {
+        overlay.style.opacity = '1'
+      })
+    }
+
+    const handleNavEnd = () => {
+      const overlay = document.getElementById('initial-loading')
+      if (overlay) {
+        overlay.style.opacity = '0'
+        overlay.style.transition = 'opacity 0.2s ease-out'
+        setTimeout(() => {
+          overlay.style.display = 'none'
+        }, 200)
+      }
+    }
+
+    window.addEventListener('app:navigation-start', handleNavStart as EventListener)
+    window.addEventListener('app:navigation-end', handleNavEnd as EventListener)
+
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('app:navigation-start', handleNavStart as EventListener)
+      window.removeEventListener('app:navigation-end', handleNavEnd as EventListener)
+    }
+  }, [])
+
+  // 路由切换完成后，隐藏加载遮罩（自动侦测 pathname 变化）
+  useEffect(() => {
+    if (!pathname) return
+    // 延迟少许，确保新页面首屏元素渲染
+    const t = setTimeout(() => {
+      const overlay = document.getElementById('initial-loading')
+      if (overlay) {
+        overlay.style.opacity = '0'
+        overlay.style.transition = 'opacity 0.2s ease-out'
+        setTimeout(() => {
+          overlay.style.display = 'none'
+        }, 200)
+      }
+    }, 150)
+    return () => clearTimeout(t)
+  }, [pathname])
+
+  return null
+}

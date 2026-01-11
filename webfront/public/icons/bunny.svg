@@ -1,0 +1,10 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Black background -->
+  <rect width="256" height="256" fill="#000000"/>
+  
+  <!-- Large golden triangle outline (forming "A" shape) -->
+  <path d="M128 50 L200 200 L56 200 Z" stroke="#D4AF37" stroke-width="8" fill="none"/>
+  
+  <!-- Inner solid golden triangle (slightly darker shade) -->
+  <path d="M128 120 L160 200 L96 200 Z" fill="#B8860B"/>
+</svg>

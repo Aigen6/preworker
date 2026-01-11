@@ -1,0 +1,62 @@
+# Multi-stage build for Next.js Standalone mode
+# Using Chinese mirror sources for better network connectivity
+# Stage 1: Build the application
+FROM docker.mirrors.ustc.edu.cn/library/node:20-alpine AS builder
+
+# Install dependencies
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Configure npm to use Chinese mirror
+RUN npm config set registry https://registry.npmmirror.com
+
+# Install dependencies
+# Note: package.json now uses npm versions of @enclave-hq/* packages
+# This ensures consistent builds between local and Docker environments
+RUN npm ci --production=false
+
+# Copy source code
+COPY . .
+
+# Build arguments for API configuration
+# These will be embedded into the client-side code during build
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WS_URL
+
+# Build the Next.js application (standalone mode)
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+
+RUN npm run build
+
+# Stage 2: Production image with Node.js runtime
+FROM docker.mirrors.ustc.edu.cn/library/node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Don't run as root
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy standalone files from builder
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["node", "server.js"]
+
+

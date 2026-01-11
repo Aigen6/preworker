@@ -1,0 +1,91 @@
+# Multi-stage build for Next.js Standalone mode - 安全加固版本
+# Stage 1: Build the application
+FROM node:20-alpine AS builder
+
+# 安装最小依赖
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# 复制 package 文件
+COPY package.json package-lock.json* ./
+
+# 安装依赖（生产依赖也需要，因为 standalone 模式需要）
+RUN npm ci --production=false
+
+# 复制源代码
+COPY . .
+
+# 构建参数用于 API 配置
+# 这些将在构建时嵌入到客户端代码中
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WS_URL
+
+# 构建 Next.js 应用（standalone 模式）
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+
+RUN npm run build
+
+# Stage 2: 生产镜像 - 安全加固
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# 创建非 root 用户和组
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# 从构建阶段复制文件
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# 安全加固：移除不必要的工具和包
+# 移除 wget, curl, bash 等可能被用于下载和执行恶意代码的工具
+RUN apk del --purge wget curl bash 2>/dev/null || true && \
+    rm -rf /tmp/* /var/tmp/* /var/cache/apk/* && \
+    find /usr/bin /usr/sbin -type f -name "wget" -o -name "curl" -o -name "bash" 2>/dev/null | xargs rm -f || true
+
+# 安全加固：设置只读文件系统（除了必要的可写目录）
+# 创建必要的可写目录
+RUN mkdir -p /tmp && \
+    chown -R nextjs:nodejs /tmp && \
+    chmod 1777 /tmp
+
+# 切换到非 root 用户
+USER nextjs
+
+# 安全加固：设置环境变量限制
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+ENV NODE_ENV=production
+
+# 暴露端口
+EXPOSE 3000
+
+# 使用 exec 形式启动，避免 shell 注入
+CMD ["node", "server.js"]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

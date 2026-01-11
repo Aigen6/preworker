@@ -1,0 +1,50 @@
+{
+  "nav": {
+    "home": "首页",
+    "settings": "设置",
+    "about": "关于"
+  },
+  "home": {
+    "title": "欢迎使用 Next.js 模板",
+    "subtitle": "这是一个基于 Next.js 13 + Tailwind CSS 的完整前端项目模板",
+    "features": {
+      "title": "主要功能",
+      "theme": "主题系统",
+      "themeDesc": "支持亮/暗模式切换和自定义主题色",
+      "i18n": "国际化",
+      "i18nDesc": "支持中英文切换",
+      "responsive": "响应式设计",
+      "responsiveDesc": "完美适配移动端、平板和PC",
+      "components": "组件库",
+      "componentsDesc": "丰富的可复用组件"
+    },
+    "getStarted": "开始使用",
+    "learnMore": "了解更多"
+  },
+  "settings": {
+    "title": "设置",
+    "theme": {
+      "title": "主题设置",
+      "mode": "主题模式",
+      "light": "亮色模式",
+      "dark": "暗色模式",
+      "system": "跟随系统",
+      "primaryColor": "主题色",
+      "selectColor": "选择主题色"
+    },
+    "language": {
+      "title": "语言设置",
+      "chinese": "中文",
+      "english": "English"
+    }
+  },
+  "common": {
+    "loading": "加载中...",
+    "error": "出错了",
+    "retry": "重试",
+    "save": "保存",
+    "cancel": "取消",
+    "confirm": "确认",
+    "close": "关闭"
+  }
+}

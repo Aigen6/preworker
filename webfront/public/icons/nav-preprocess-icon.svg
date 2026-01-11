@@ -1,0 +1,18 @@
+<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 齿轮外圈 -->
+  <path d="M10 3.5V1.5" stroke="#F4F4F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10 18.5V16.5" stroke="#F4F4F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16.5 10H18.5" stroke="#F4F4F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M1.5 10H3.5" stroke="#F4F4F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M15.364 4.636L16.778 3.222" stroke="#F4F4F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M3.222 16.778L4.636 15.364" stroke="#F4F4F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M15.364 15.364L16.778 16.778" stroke="#F4F4F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M3.222 3.222L4.636 4.636" stroke="#F4F4F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- 齿轮中心圆 -->
+  <circle cx="10" cy="10" r="3.5" stroke="#F4F4F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- 处理箭头（从齿轮指向右侧） -->
+  <path d="M13.5 10L15.5 10" stroke="#F4F4F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M14.5 9L15.5 10L14.5 11" stroke="#F4F4F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

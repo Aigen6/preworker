@@ -1,0 +1,30 @@
+{
+  "name": "@preworker/contracts",
+  "version": "1.0.0",
+  "description": "PreWorker DepositVault Smart Contracts - Pull模式凭证代币托管",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.0",
+    "@openzeppelin/contracts-upgradeable": "^5.0.0"
+  },
+  "keywords": [
+    "deposit",
+    "vault",
+    "lending",
+    "yield-token",
+    "pull-mode",
+    "smart-contracts"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "compile": "forge build",
+    "test": "forge test",
+    "test:verbose": "forge test -vvv",
+    "deploy:vault": "forge script script/DeployDepositVault.s.sol",
+    "deploy:vault:broadcast": "forge script script/DeployDepositVault.s.sol --broadcast"
+  },
+  "devDependencies": {},
+  "type": "module"
+}

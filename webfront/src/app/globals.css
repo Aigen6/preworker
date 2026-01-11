@@ -1,0 +1,274 @@
+@import "tailwindcss";
+
+@theme {
+  /* 背景 */
+  --color-bg-base: var(--bg-base);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-overlay: var(--bg-overlay);
+  --color-bg-hairline: var(--bg-hairline);
+
+  /* 文字 */
+  --color-text-main: var(--text-main);
+  --color-text-muted: var(--text-muted);
+  --color-text-danger: var(--text-danger);
+  --color-text-on-primary: var(--text-on-primary);
+
+  /* 边框 */
+  --color-border-line: var(--border-line);
+
+  /* 主色 */
+  --color-primary: var(--primary);
+
+  /* 黑色系列 - 用于卡片和背景（从主题配置读取） */
+  --color-black-1: var(--black-1);
+  --color-black-2: var(--black-2);
+  --color-black-3: var(--black-3);
+  --color-black-4: var(--black-4);
+  --color-black-9: var(--black-9);
+}
+
+@layer base {
+  /* ===== 默认 dark 模式 ===== */
+  :root {
+    /* 背景 */
+    --bg-base: #151515;
+    --bg-surface: #242424;
+    --bg-overlay: #1515154d;
+    --bg-hairline: #FFFFFF0d;
+
+    /* 文字 */
+    --text-main: #F4F4F4;
+    --text-muted: #939393;
+    --text-danger: #B73C3C;
+    --text-on-primary: #000000; /* ✅ 主色按钮内文字（深色文字在绿色背景上） */
+
+    /* 边框 */
+    --border-line: #3A3A3A;
+
+    /* 主色 - 青绿色（类似 ChangeNOW 风格） */
+    --primary: #00FF88;
+    
+    /* 黑色系列 */
+    --black-1: #1D1D1D;
+    --black-2: #242424;
+    --black-3: #2A2A2A;
+    --black-4: #3A3A3A;
+    --black-9: #939393;
+  }
+
+  /* ===== Light 模式 ===== */
+  .light {
+    /* 背景 */
+    --bg-base: #FFFFFF;
+    --bg-surface: #F5F5F5;
+    --bg-overlay: #0000000d;
+    --bg-hairline: #0000000d;
+
+    /* 文字 */
+    --text-main: #13131C;
+    --text-muted: #3A3A3A;
+    --text-danger: #B73C3C;
+    --text-on-primary: #13131C; /* ✅ 保持一致 */
+
+    /* 边框 */
+    --border-line: #D1D1D1;
+
+    /* 主色 - 青绿色（类似 ChangeNOW 风格） */
+    --primary: #00FF88;
+    
+    /* 黑色系列 */
+    --black-1: #1D1D1D;
+    --black-2: #242424;
+    --black-3: #2A2A2A;
+    --black-4: #3A3A3A;
+    --black-9: #939393;
+  }
+}
+
+@layer utilities {
+  /* 背景 */
+  .bg-base { background-color: var(--color-bg-base); }
+  .bg-surface { background-color: var(--color-bg-surface); }
+  .bg-overlay { background-color: var(--color-bg-overlay); }
+  .bg-hairline { background-color: var(--color-bg-hairline); }
+
+  /* 文字 */
+  .text-main { color: var(--color-text-main); }
+  .text-muted { color: var(--color-text-muted); }
+  .text-danger { color: var(--color-text-danger); }
+  .text-on-primary { color: var(--color-text-on-primary); }
+  
+  /* 危险色 - 背景和边框 */
+  .bg-danger { background-color: var(--color-text-danger); }
+  .border-danger { border-color: var(--color-text-danger); }
+
+  /* 边框 */
+  .border-line { border-color: var(--color-border-line); }
+
+  /* 主色 */
+  .bg-primary { background-color: var(--color-primary); }
+  .text-primary { color: var(--color-primary); }
+  .border-primary { border-color: var(--color-primary); }
+  .hover\:bg-primary-dark:hover { background-color: color-mix(in srgb, var(--color-primary) 85%, black); }
+
+  /* 黑色系列 - 背景 */
+  .bg-black-1 { background-color: var(--color-black-1); }
+  .bg-black-2 { background-color: var(--color-black-2); }
+  .bg-black-3 { background-color: var(--color-black-3); }
+  .bg-black-4 { background-color: var(--color-black-4); }
+
+  /* 黑色系列 - 文字 */
+  .text-black-1 { color: var(--color-black-1); }
+  .text-black-2 { color: var(--color-black-2); }
+  .text-black-3 { color: var(--color-black-3); }
+  .text-black-4 { color: var(--color-black-4); }
+  .text-black-9 { color: var(--color-black-9); }
+
+  /* 黑色系列 - 边框 */
+  .border-black-1 { border-color: var(--color-black-1); }
+  .border-black-2 { border-color: var(--color-black-2); }
+  .border-black-3 { border-color: var(--color-black-3); }
+  .border-black-4 { border-color: var(--color-black-4); }
+
+  /* 黑色系列 - 分割线 */
+  .divide-black-1 > * + * { border-color: var(--color-black-1); }
+  .divide-black-2 > * + * { border-color: var(--color-black-2); }
+  .divide-black-3 > * + * { border-color: var(--color-black-3); }
+  .divide-black-4 > * + * { border-color: var(--color-black-4); }
+}
+
+body {
+  background: var(--color-bg-base);
+  color: var(--color-text-main);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* 全局隐藏滚动条 */
+* {
+  -ms-overflow-style: none !important;  /* IE and Edge */
+  scrollbar-width: none !important;  /* Firefox */
+}
+
+*::-webkit-scrollbar {
+  display: none !important;  /* Chrome, Safari and Opera */
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* 滚动条样式 - 已禁用，所有滚动条都隐藏 */
+::-webkit-scrollbar {
+  width: 0px;
+  display: none;
+}
+
+::-webkit-scrollbar-track {
+  display: none;
+}
+
+::-webkit-scrollbar-thumb {
+  display: none;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  display: none;
+}
+
+/* BottomSheet 进出场动画 */
+@keyframes sheet-slide-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0%); }
+}
+
+@keyframes sheet-slide-out {
+  from { transform: translateY(0%); }
+  to { transform: translateY(100%); }
+}
+
+.animate-sheet-slide-in {
+  animation: sheet-slide-in 0.28s ease-out forwards;
+}
+
+.animate-sheet-slide-out {
+  animation: sheet-slide-out 0.28s ease-in forwards;
+}
+
+/* 遮罩淡入淡出动画 */
+@keyframes sheet-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sheet-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.animate-sheet-fade-in {
+  animation: sheet-fade-in 0.28s ease-out forwards;
+}
+
+.animate-sheet-fade-out {
+  animation: sheet-fade-out 0.28s ease-in forwards;
+}
+
+/* 隐藏滚动条 */
+.scrollbar-hide {
+  -ms-overflow-style: none !important;  /* IE and Edge */
+  scrollbar-width: none !important;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none !important;  /* Chrome, Safari and Opera */
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* 通用隐藏滚动条 */
+.hide-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Loading 动画 */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.animate-fade-out {
+  animation: fadeOut 0.3s ease-in-out;
+}
