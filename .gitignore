@@ -69,6 +69,10 @@ build/
 # Temporary files
 *.tmp
 *.temp
+*.bak
+*.backup
+*.old
+*.orig
 .cache/
 
 # OS files
