@@ -7,7 +7,8 @@
   "header": {
     "languageSelection": "言語選択",
     "subtitle": "チェーン上のプライベートバンク",
-    "walletConnected": "ウォレット接続済み"
+    "walletConnected": "ウォレット接続済み",
+    "walletAddress": "ウォレットアドレス"
   },
   "footer": {
     "home": "ホーム",
@@ -150,7 +151,11 @@
       "cancelWait": "待機をやめる",
       "cancelWaitCountdown": "待機をやめる（{seconds}秒）"
     },
-    "insufficientBalance": "残高不足: 現在の残高 {balance}, 必要額 {amount}"
+    "insufficientBalance": "残高不足: 現在の残高 {balance}, 必要額 {amount}",
+    "riskFeeInfo": "リスクスコアと手数料情報",
+    "baseFeeRate": "基本手数料率",
+    "riskBasedFee": "リスクベース手数料率",
+    "viewRiskFeeDetails": "詳細を表示"
   },
   "defi": {
     "title": "シームレスDeFi",
@@ -460,7 +465,11 @@
     "insufficientAmountWarning": "バウチャーの総額（{currentTotal} USDT）は割り当て可能額（{total} USDT）より少なく、{remaining} USDT が未割り当てです。生成を続行しますか？",
     "continueGenerate": "生成を続行",
     "voucherCount": "個のバウチャー",
-    "voucher": "バウチャー"
+    "voucher": "バウチャー",
+    "reservedVoucher": "固定控除（5%）",
+    "reserved": "固定控除5%",
+    "remainingVoucher": "残り部分（手動抽出）",
+    "remaining": "残り部分、手動抽出"
   },
   "swipe": {
     "swipeToSeeMore": "スワイプして詳細を見る"

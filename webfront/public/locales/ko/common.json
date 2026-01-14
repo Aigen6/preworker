@@ -7,7 +7,8 @@
   "header": {
     "languageSelection": "언어 선택",
     "subtitle": "블록체인상의 프라이빗 뱅크",
-    "walletConnected": "지갑 연결됨"
+    "walletConnected": "지갑 연결됨",
+    "walletAddress": "지갑 주소"
   },
   "footer": {
     "home": "홈",
@@ -150,7 +151,11 @@
       "cancelWait": "기다림 취소",
       "cancelWaitCountdown": "기다림 취소 ({seconds}초)"
     },
-    "insufficientBalance": "잔액 부족: 현재 잔액 {balance}, 필요 금액 {amount}"
+    "insufficientBalance": "잔액 부족: 현재 잔액 {balance}, 필요 금액 {amount}",
+    "riskFeeInfo": "위험 점수 및 수수료 정보",
+    "baseFeeRate": "기본 수수료율",
+    "riskBasedFee": "위험 기반 수수료율",
+    "viewRiskFeeDetails": "세부 정보 보기"
   },
   "defi": {
     "title": "원활한 DeFi",
@@ -460,7 +465,11 @@
     "insufficientAmountWarning": "바우처 총액({currentTotal} USDT)이 할당 가능 금액({total} USDT)보다 작으며 {remaining} USDT가 미할당 상태입니다. 계속 생성하시겠습니까?",
     "continueGenerate": "계속 생성",
     "voucherCount": "개의 바우처",
-    "voucher": "바우처"
+    "voucher": "바우처",
+    "reservedVoucher": "고정 공제 (5%)",
+    "reserved": "고정 공제 5%",
+    "remainingVoucher": "나머지 부분 (수동 추출)",
+    "remaining": "나머지 부분, 수동 추출"
   },
   "swipe": {
     "swipeToSeeMore": "스와이프하여 더 보기"

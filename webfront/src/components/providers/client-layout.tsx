@@ -243,7 +243,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                     <Header />
                     <main 
                       ref={mainRef}
-                      className="flex-1 h-0 pt-[71.27px] pb-[67px] md:pb-0 md:pl-[200px] overflow-y-auto hide-scrollbar"
+                      className="flex-1 h-0 pt-[120px] pb-[67px] md:pb-0 md:pl-[200px] overflow-y-auto hide-scrollbar"
                     >
                       <div className="w-full md:max-w-[800px] md:mx-auto md:px-4">
                         {children}

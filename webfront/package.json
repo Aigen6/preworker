@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack -p 3000",
+    "dev": "PORT=5173 next dev --webpack -p 5173",
+    "dev:tunnel": "./dev-with-tunnel.sh",
     "build": "next build --webpack",
-    "start": "next start -p 3000",
+    "start": "PORT=5173 next start -p 5173",
     "lint": "eslint"
   },
   "dependencies": {

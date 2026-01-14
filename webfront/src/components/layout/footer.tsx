@@ -118,7 +118,7 @@ export function Footer({ isHidden = false }: { isHidden?: boolean }) {
       </footer>
 
       {/* 桌面端：左侧边栏 */}
-      <aside className="hidden md:flex fixed left-0 top-[71.27px] bottom-0 z-40 w-[200px] flex-col py-6 bg-surface border-r border-line backdrop-blur-sm" style={{ transform: 'translateZ(0)' }}>
+      <aside className="hidden md:flex fixed left-0 top-[120px] bottom-0 z-40 w-[200px] flex-col py-6 bg-surface border-r border-line backdrop-blur-sm" style={{ transform: 'translateZ(0)' }}>
         <nav className="flex flex-col gap-2 px-4">
           {navItems.map((item) => {
             const isActive = activeNav === item.id

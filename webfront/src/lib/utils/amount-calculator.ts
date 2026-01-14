@@ -60,6 +60,48 @@ export function formatAmountForDisplay(amount: string, decimals: number = 2): st
 }
 
 /**
+ * 格式化大数字用于显示（自动使用科学计数法或缩略形式）
+ * 当数字太大时，使用科学计数法显示
+ * @param amount 金额字符串
+ * @param maxLength 最大显示长度（默认 15），超过此长度使用科学计数法
+ * @param decimals 小数位数（默认 2）
+ * @returns 格式化后的字符串
+ */
+export function formatLargeAmountForDisplay(amount: string, maxLength: number = 15, decimals: number = 2): string {
+  // 移除前导零和小数点后的尾随零
+  let cleaned = amount.replace(/^0+/, '').replace(/\.0+$/, '')
+  if (cleaned.startsWith('.')) {
+    cleaned = '0' + cleaned
+  }
+  if (cleaned === '') {
+    cleaned = '0'
+  }
+  
+  // 如果长度在限制内，直接返回
+  if (cleaned.length <= maxLength) {
+    // 确保有小数部分（如果需要）
+    if (!cleaned.includes('.')) {
+      return `${cleaned}.${'0'.repeat(decimals)}`
+    }
+    const parts = cleaned.split('.')
+    if (parts[1].length < decimals) {
+      return `${parts[0]}.${parts[1].padEnd(decimals, '0')}`
+    }
+    return cleaned
+  }
+  
+  // 使用科学计数法
+  const num = parseFloat(cleaned)
+  if (isNaN(num) || !isFinite(num)) {
+    return cleaned
+  }
+  
+  // 使用科学计数法，保留指定小数位数
+  const scientific = num.toExponential(decimals)
+  return scientific
+}
+
+/**
  * 统一格式化 USDT 金额用于显示
  * - 最多显示 6 位小数
  * - 自动去掉末尾的 0

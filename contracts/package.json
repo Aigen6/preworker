@@ -4,7 +4,9 @@
   "description": "PreWorker DepositVault Smart Contracts - Pull模式凭证代币托管",
   "dependencies": {
     "@openzeppelin/contracts": "^5.0.0",
-    "@openzeppelin/contracts-upgradeable": "^5.0.0"
+    "@openzeppelin/contracts-upgradeable": "^5.0.0",
+    "ethers": "^6.0.0",
+    "tronweb": "^5.0.0"
   },
   "keywords": [
     "deposit",
@@ -22,9 +24,13 @@
     "compile": "forge build",
     "test": "forge test",
     "test:verbose": "forge test -vvv",
-    "deploy:vault": "forge script script/DeployDepositVault.s.sol",
-    "deploy:vault:broadcast": "forge script script/DeployDepositVault.s.sol --broadcast"
+    "test:bsc": "node script/testDepositVaultBSC.cjs",
+    "test:eth": "node script/testDepositVaultETH.cjs",
+    "test:tron": "node script/testDepositVaultTRON.cjs",
+    "deploy:adapters": "node script/deployAdapters.cjs",
+    "deploy:vault:eth": "node script/deployDepositVaultETH.cjs",
+    "deploy:vault:bsc": "node script/deployDepositVaultBSC.cjs",
+    "deploy:vault:tron": "node script/deployDepositVaultTRON.cjs"
   },
-  "devDependencies": {},
-  "type": "module"
+  "devDependencies": {}
 }

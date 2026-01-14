@@ -7,7 +7,8 @@
   "header": {
     "languageSelection": "语言选择",
     "subtitle": "区块链上的私有银行",
-    "walletConnected": "钱包已连接"
+    "walletConnected": "钱包已连接",
+    "walletAddress": "钱包地址"
   },
   "footer": {
     "home": "首页",
@@ -150,7 +151,11 @@
       "cancelWait": "取消等待",
       "cancelWaitCountdown": "取消等待（{seconds}秒）"
     },
-    "insufficientBalance": "余额不足: 当前余额 {balance}, 需要 {amount}"
+    "insufficientBalance": "余额不足: 当前余额 {balance}, 需要 {amount}",
+    "riskFeeInfo": "风险评分和费率信息",
+    "baseFeeRate": "基础费率",
+    "riskBasedFee": "风险费率",
+    "viewRiskFeeDetails": "查看详细信息"
   },
   "defi": {
     "title": "无缝 DeFi",
@@ -460,7 +465,11 @@
     "insufficientAmountWarning": "凭证总金额（{currentTotal} USDT）小于可分配金额（{total} USDT），还剩余 {remaining} USDT 未分配。是否继续生成凭证？",
     "continueGenerate": "继续生成",
     "voucherCount": "个凭证",
-    "voucher": "凭证"
+    "voucher": "凭证",
+    "reservedVoucher": "固定扣除（5%）",
+    "reserved": "固定扣除5%",
+    "remainingVoucher": "剩余部分（人工提取）",
+    "remaining": "剩余部分，人工提取"
   },
   "swipe": {
     "swipeToSeeMore": "滑动查看更多"

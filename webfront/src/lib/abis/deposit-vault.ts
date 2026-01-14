@@ -33,6 +33,16 @@ export const DEPOSIT_VAULT_ABI = [
   },
   {
     type: 'function',
+    name: 'redeem',
+    inputs: [
+      { name: 'depositId', type: 'uint256' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: 'actualAmount', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     name: 'getDeposit',
     inputs: [
       { name: 'depositId', type: 'uint256' },
@@ -117,6 +127,34 @@ export const DEPOSIT_VAULT_ABI = [
       { name: 'depositId', type: 'uint256' },
     ],
     outputs: [{ name: 'underlyingAmount', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getYieldTokenAddress',
+    inputs: [{ name: 'token', type: 'address' }],
+    outputs: [{ name: 'yieldToken', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'defaultLendingTarget',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'lendingTargets',
+    inputs: [{ name: 'token', type: 'address' }],
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'defaultLendingDelegate',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
     stateMutability: 'view',
   },
   {

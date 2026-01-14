@@ -1,0 +1,21 @@
+{
+  "network": "bsc",
+  "chainId": "56",
+  "deployer": "0x9F537216EE9AC756DfD4b117B74870C8AcAaFE63",
+  "timestamp": "2026-01-14T12:13:57.256Z",
+  "contracts": {
+    "DepositVault": {
+      "address": "0x9FC3e79766bFA4B5642A890F80FD947f170B3481",
+      "owner": "0x9F537216EE9AC756DfD4b117B74870C8AcAaFE63",
+      "defaultLendingDelegate": "0xCee5E662b1204b5b881531a4c50844F2b4C336ec",
+      "defaultLendingTarget": "0x6807dc923806fE8Fd134338EABCA509979a7e0cB",
+      "recoveryDelay": "259200"
+    },
+    "AAVEv3Delegate": {
+      "address": "0xCee5E662b1204b5b881531a4c50844F2b4C336ec"
+    }
+  },
+  "configuration": {
+    "aavePool": "0x6807dc923806fE8Fd134338EABCA509979a7e0cB"
+  }
+}

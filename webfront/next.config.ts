@@ -7,6 +7,13 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   
+  // 允许开发环境的跨域请求
+  allowedDevOrigins: [
+    'wallet-test.enclave-hq.com',
+    'wallet.enclave-hq.com',
+    'localhost',
+  ],
+  
   webpack: (config, { isServer }) => {
     const webpack = require('webpack');
     const fs = require('fs');

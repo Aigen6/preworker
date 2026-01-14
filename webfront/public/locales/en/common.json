@@ -7,7 +7,8 @@
   "header": {
     "languageSelection": "Language Selection",
     "subtitle": "Private Bank on Blockchain",
-    "walletConnected": "Wallet Connected"
+    "walletConnected": "Wallet Connected",
+    "walletAddress": "Wallet Address"
   },
   "footer": {
     "home": "Home",
@@ -150,7 +151,11 @@
       "cancelWait": "Stop waiting",
       "cancelWaitCountdown": "Stop waiting ({seconds}s)"
     },
-    "insufficientBalance": "Insufficient balance: current balance {balance}, required {amount}"
+    "insufficientBalance": "Insufficient balance: current balance {balance}, required {amount}",
+    "riskFeeInfo": "Risk Score and Fee Rate Information",
+    "baseFeeRate": "Base Fee Rate",
+    "riskBasedFee": "Risk-Based Fee Rate",
+    "viewRiskFeeDetails": "View Details"
   },
   "defi": {
     "title": "Seamless DeFi",
@@ -465,7 +470,11 @@
     "insufficientAmountWarning": "Voucher total ({currentTotal} USDT) is less than allocatable amount ({total} USDT), {remaining} USDT remains unallocated. Continue generating vouchers?",
     "continueGenerate": "Continue to Generate",
     "voucherCount": " vouchers",
-    "voucher": "Voucher"
+    "voucher": "Voucher",
+    "reservedVoucher": "Reserved (5%)",
+    "reserved": "Reserved 5%",
+    "remainingVoucher": "Remaining (Manual Extraction)",
+    "remaining": "Remaining, manual extraction"
   },
   "swipe": {
     "swipeToSeeMore": "Swipe to see more"

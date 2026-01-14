@@ -1348,8 +1348,11 @@ function DepositPage() {
 
   const handleAllocateVoucher = (record: DepositRecordData) => {
     // 使用 record 的 receivableAmount（即 allocatableAmount）和 checkbook ID
+    // 传递 originalAmount 和 feeAmount 用于计算5%和不足缺失部分
     voucherSheet.open({ 
       totalAmount: record.receivableAmount,
+      originalAmount: record.originalAmount,
+      actualFee: record.feeAmount,
       checkbookId: record.id // 传递选中的 checkbook ID
     })
   }
@@ -2344,6 +2347,8 @@ function DepositPage() {
       >
         <VoucherAllocation
           totalAmount={voucherSheet.data?.totalAmount || 1.058}
+          originalAmount={voucherSheet.data?.originalAmount}
+          actualFee={voucherSheet.data?.actualFee}
           onGenerate={handleGenerateVouchers}
           onClose={voucherSheet.close}
         />

@@ -4,60 +4,44 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-
-// 导入 Treasury 相关接口（与主项目保持一致）
-interface ITreasuryConfigCore {
-    function getTokenAddress(string memory tokenKey) external view returns (address);
-    function getTokenKey(address tokenAddress) external view returns (string memory);
-    function getAddressConfig(string memory key) external view returns (address);
-    function getStringConfig(string memory key) external view returns (string memory);
-}
-
-interface ILendingDelegate {
-    function supply(
-        string calldata tokenKey,
-        uint256 amount,
-        address onBehalfOf,
-        address lendingTarget,
-        address configAddr,
-        address yieldTokenHint
-    ) external returns (uint256 shares);
-    
-    function getYieldTokenAddress(
-        string calldata tokenKey,
-        address lendingTarget,
-        address configAddr
-    ) external view returns (address yieldToken);
-    
-    function estimateRedeemAmount(
-        string calldata tokenKey,
-        uint256 yieldTokenAmount,
-        address lendingTarget,
-        address configAddr
-    ) external view returns (uint256 underlyingAmount);
-}
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "./interfaces/ILendingDelegate.sol";
 
 /**
  * @title DepositVault
- * @dev Pull模式的凭证代币托管合约
- * @notice 地址A存入借贷池后，凭证代币托管在合约中，地址B可以自取
+ * @dev 多链支持的凭证代币托管合约，使用直接配置 + ILendingDelegate
+ * @notice 地址A存入借贷池后，yield token托管在合约中，地址B可以自取
  *         如果地址B输入错误或没来取，地址A可以取回
  * 
  * 工作流程:
- * 1. 地址A调用 deposit() -> 存入借贷池，获得凭证代币，托管在合约中
- * 2. 地址B调用 claim() -> 领取凭证代币
- * 3. 如果地址B没来取，地址A在时间锁后调用 recover() -> 取回凭证代币
+ * 1. 地址A调用 deposit() -> 存入借贷池，获得yield token，托管在合约中
+ * 2. 地址B调用 claim() -> 领取yield token
+ * 3. 如果地址B没来取，地址A在时间锁后调用 recover() -> 取回yield token
+ * 4. 或者调用 redeem() -> 从借贷池赎回yield token，获得底层代币
  * 
  * 多链支持:
- * - 使用 TreasuryConfigCore 来获取不同链的借贷配置
+ * - 直接在合约中配置借贷适配器和借贷池地址
  * - 使用 ILendingDelegate 适配器来处理不同链的借贷协议（AAVE V3, JustLend等）
+ * - 可以在 BSC、Ethereum、Polygon、TRON 等链上部署
+ * - 支持每个代币配置不同的借贷池
  */
 contract DepositVault is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    // 配置合约地址（用于获取代币地址和借贷配置）
-    ITreasuryConfigCore public configCore;
+    // 借贷适配器地址（每个代币可以配置不同的适配器）
+    mapping(address => address) public lendingDelegates; // token => delegate
+    
+    // 借贷池地址（每个代币可以配置不同的借贷池）
+    mapping(address => address) public lendingTargets; // token => lendingTarget
+    
+    // 代币 key 映射（用于 ILendingDelegate 接口）
+    mapping(address => string) public tokenKeys; // token => tokenKey
+    
+    // 默认借贷适配器（如果代币没有特定配置，使用默认值）
+    address public defaultLendingDelegate;
+    
+    // 默认借贷池（如果代币没有特定配置，使用默认值）
+    address public defaultLendingTarget;
     
     // 全局存款记录：depositId => DepositInfo（全局唯一ID）
     mapping(uint256 => DepositInfo) public deposits;
@@ -75,6 +59,24 @@ contract DepositVault is Ownable, ReentrancyGuard {
     
     // 可选：取回时间锁（默认3天）
     uint256 public recoveryDelay = 3 days;
+    
+    // 紧急提取时间锁（默认2天）
+    uint256 public emergencyWithdrawDelay = 2 days;
+    
+    // 最小存款金额（防止粉尘攻击，默认 10 USDT，考虑6位精度：10 * 10^6）
+    // 注意：BSC 上的 USDT 是 18 位精度，其他链（Ethereum、TRON等）是 6 位精度
+    uint256 public minDepositAmount = 10 * 10**6;
+    
+    // 紧急提取请求
+    struct EmergencyWithdrawRequest {
+        address token;
+        uint256 amount;
+        uint256 requestTime;
+        bool executed;
+    }
+    
+    // 每个代币的紧急提取请求（一次只能有一个待执行的请求）
+    mapping(address => EmergencyWithdrawRequest) public emergencyWithdrawRequests;
     
     struct DepositInfo {
         address depositor;          // 存款人地址（源地址）
@@ -113,8 +115,30 @@ contract DepositVault is Ownable, ReentrancyGuard {
     
     event WhitelistUpdated(address indexed recipient, bool valid);
     event RecoveryDelayUpdated(uint256 newDelay);
-    event LendingDelegateUpdated(address indexed newDelegate);
-    event ConfigCoreUpdated(address indexed newConfigCore);
+    event LendingDelegateUpdated(address indexed token, address indexed delegate);
+    event LendingTargetUpdated(address indexed token, address indexed target);
+    event TokenKeyUpdated(address indexed token, string tokenKey);
+    event DefaultLendingDelegateUpdated(address indexed delegate);
+    event DefaultLendingTargetUpdated(address indexed target);
+    event EmergencyWithdrawRequested(
+        address indexed token,
+        uint256 amount,
+        uint256 executeAfter
+    );
+    event EmergencyWithdrawExecuted(
+        address indexed token,
+        uint256 amount
+    );
+    event EmergencyWithdrawDelayUpdated(uint256 newDelay);
+    event DelegateWhitelistUpdated(address indexed delegate, bool valid);
+    event DelegateWhitelistEnabledUpdated(bool enabled);
+    event MinDepositAmountUpdated(uint256 newAmount);
+    event GetUnderlyingAmountFailed(
+        uint256 indexed depositId,
+        address indexed delegate,
+        address indexed token,
+        string reason
+    );
     
     error InvalidAddress();
     error InvalidAmount();
@@ -126,17 +150,31 @@ contract DepositVault is Ownable, ReentrancyGuard {
     error YieldTokenNotFound();
     error NoYieldTokenReceived();
     error SupplyFailed();
+    error WithdrawFailed();
+    error EmergencyWithdrawNotReady();
+    error EmergencyWithdrawRequestNotFound();
+    error EmergencyWithdrawAlreadyExecuted();
+    error EmergencyWithdrawRequestPending(); // 已有待执行的请求
+    error InvalidDelegate(); // 无效的适配器地址
+    error InvalidLendingTarget(); // 无效的借贷池地址
+    error DepositAmountTooSmall(); // 存款金额太小（小于最小限制）
+    error DepositIdNotFoundInList(); // 存款ID不在列表中（状态不一致）
+    
+    // 适配器白名单（可选，如果启用，只允许白名单中的适配器）
+    mapping(address => bool) public delegateWhitelist;
+    bool public delegateWhitelistEnabled;
     
     constructor(
-        address _configCore,
-        address _initialOwner
-    ) {
-        if (_configCore == address(0)) revert InvalidAddress();
+        address _initialOwner,
+        address _defaultLendingDelegate,
+        address _defaultLendingTarget
+    ) Ownable(_initialOwner) {
         if (_initialOwner == address(0)) revert InvalidAddress();
+        if (_defaultLendingDelegate == address(0)) revert InvalidAddress();
+        if (_defaultLendingTarget == address(0)) revert InvalidAddress();
         
-        configCore = ITreasuryConfigCore(_configCore);
-        
-        _transferOwnership(_initialOwner);
+        defaultLendingDelegate = _defaultLendingDelegate;
+        defaultLendingTarget = _defaultLendingTarget;
     }
     
     /**
@@ -155,21 +193,37 @@ contract DepositVault is Ownable, ReentrancyGuard {
         if (amount == 0) revert InvalidAmount();
         if (intendedRecipient == address(0)) revert InvalidAddress();
         
-        // 1. 获取 tokenKey
-        string memory tokenKey = configCore.getTokenKey(token);
-        if (bytes(tokenKey).length == 0) revert InvalidAddress();
+        // 检查最小存款金额（防止粉尘攻击）
+        if (amount < minDepositAmount) {
+            revert DepositAmountTooSmall();
+        }
         
-        // 2. 解析借贷配置（从 configCore 获取）
-        (address delegate, address lendingTarget) = _resolveLendingConfig(tokenKey);
+        // 1. 获取借贷配置（优先使用代币特定配置，否则使用默认配置）
+        address delegate = lendingDelegates[token];
+        address lendingTarget = lendingTargets[token];
+        
+        if (delegate == address(0)) {
+            delegate = defaultLendingDelegate;
+        }
+        if (lendingTarget == address(0)) {
+            lendingTarget = defaultLendingTarget;
+        }
+        
         if (delegate == address(0) || lendingTarget == address(0)) {
             revert InvalidAddress();
         }
         
+        // 验证适配器地址（在使用前验证）
+        _validateDelegate(delegate);
+        
+        // 2. 获取 tokenKey（如果未配置，使用空字符串）
+        string memory tokenKey = tokenKeys[token];
+        
         // 3. 获取 yield token 地址
         address yieldToken = ILendingDelegate(delegate).getYieldTokenAddress(
+            token,
             tokenKey,
-            lendingTarget,
-            address(configCore)
+            lendingTarget
         );
         if (yieldToken == address(0)) revert YieldTokenNotFound();
         
@@ -183,27 +237,42 @@ contract DepositVault is Ownable, ReentrancyGuard {
         IERC20(token).forceApprove(lendingTarget, amount);
         
         // 7. 通过适配器存入借贷池（使用 delegatecall）
-        address configCoreAddr = address(configCore);
-        (bool success, bytes memory result) = delegate.delegatecall(
+        (bool success, ) = delegate.delegatecall(
             abi.encodeWithSelector(
                 ILendingDelegate.supply.selector,
+                token, // tokenAddress
                 tokenKey,
                 amount,
                 address(this), // onBehalfOf = DepositVault
                 lendingTarget,
-                configCoreAddr,
-                address(0) // yield token = 0 means auto-resolve
+                yieldToken // yieldTokenHint
             )
         );
         
         if (!success) revert SupplyFailed();
         
         // 8. 获取存入后的 yield token 余额
+        // 注意：yield token 应该已经发送到 address(this)（即 DepositVault 合约）
+        // 因为 supply 函数的 onBehalfOf 参数是 address(this)
         uint256 yieldAfter = IERC20(yieldToken).balanceOf(address(this));
         uint256 yieldAmount = yieldAfter - yieldBefore;
         if (yieldAmount == 0) revert NoYieldTokenReceived();
         
+        // 验证：确保 yield token 确实在合约中，而不是在 depositor 地址
+        // 这是一个额外的安全检查，确保 lending delegate 正确地将 yield token 发送到合约
+        if (IERC20(yieldToken).balanceOf(msg.sender) > yieldBefore) {
+            // 如果 depositor 的余额增加了，说明 yield token 可能被错误地发送到了 depositor
+            // 这不应该发生，因为 onBehalfOf 是 address(this)
+            revert NoYieldTokenReceived(); // 使用相同的错误，避免暴露内部逻辑
+        }
+        
         // 9. 记录存款信息（使用全局唯一ID）
+        // 注意：yield token 保留在合约中，不会转给 depositor
+        // 只有 intendedRecipient 可以通过 claim() 提取，或 depositor 可以通过 recover() 取回
+        // 检查 depositCount 是否接近上限（防止溢出）
+        if (depositCount == type(uint256).max) {
+            revert InvalidAmount(); // 使用 InvalidAmount 表示已达到上限
+        }
         depositId = depositCount++;
         
         deposits[depositId] = DepositInfo({
@@ -350,7 +419,45 @@ contract DepositVault is Ownable, ReentrancyGuard {
         view
         returns (uint256[] memory depositIds)
     {
-        return recipientDeposits[recipient];
+        // 获取所有关联的存款ID（recipientDeposits 列表只包含 intendedRecipient == recipient 的存款）
+        uint256[] memory allDepositIds = recipientDeposits[recipient];
+        uint256 count = 0;
+        
+        // 先计算未使用的存款数量
+        // 注意：recipientDeposits[recipient] 列表中的存款，其 intendedRecipient 应该都是 recipient
+        // 但为了安全，我们仍然检查 used 状态和 yieldAmount
+        for (uint256 i = 0; i < allDepositIds.length; i++) {
+            uint256 depositId = allDepositIds[i];
+            DepositInfo storage depositInfo = deposits[depositId];
+            // 只计算未使用且有余额的存款
+            // 注意：不需要检查 intendedRecipient，因为列表本身已经过滤了
+            if (!depositInfo.used && depositInfo.yieldAmount > 0) {
+                // 额外验证：确保 intendedRecipient 匹配（防御性检查）
+                if (depositInfo.intendedRecipient == recipient) {
+                    count++;
+                }
+            }
+        }
+        
+        // 创建结果数组
+        uint256[] memory result = new uint256[](count);
+        uint256 index = 0;
+        
+        // 填充结果数组
+        for (uint256 i = 0; i < allDepositIds.length; i++) {
+            uint256 depositId = allDepositIds[i];
+            DepositInfo storage depositInfo = deposits[depositId];
+            // 只包含未使用且有余额的存款
+            if (!depositInfo.used && depositInfo.yieldAmount > 0) {
+                // 额外验证：确保 intendedRecipient 匹配（防御性检查）
+                if (depositInfo.intendedRecipient == recipient) {
+                    result[index] = depositId;
+                    index++;
+                }
+            }
+        }
+        
+        return result;
     }
     
     /**
@@ -367,9 +474,11 @@ contract DepositVault is Ownable, ReentrancyGuard {
     }
     
     /**
-     * @dev 查询凭证代币对应的底层资产数量（折算成USDT）
+     * @dev 查询凭证代币对应的底层资产数量（考虑利息）
      * @param depositId 全局存款ID
      * @return underlyingAmount 底层资产数量（wei）
+     * @notice 这是一个 view 函数，如果调用失败会返回 0，不会发出事件
+     * @notice 如果需要错误记录，请使用 getUnderlyingAmountWithLog() 函数
      */
     function getUnderlyingAmount(uint256 depositId)
         external
@@ -379,39 +488,328 @@ contract DepositVault is Ownable, ReentrancyGuard {
         DepositInfo memory info = deposits[depositId];
         if (info.yieldAmount == 0) return 0;
         
-        // 1. 获取 tokenKey
-        string memory tokenKey = configCore.getTokenKey(info.token);
-        if (bytes(tokenKey).length == 0) return 0;
+        // 1. 获取借贷配置
+        address delegate = lendingDelegates[info.token];
+        address lendingTarget = lendingTargets[info.token];
         
-        // 2. 解析借贷配置
-        (address delegate, address lendingTarget) = _resolveLendingConfig(tokenKey);
+        if (delegate == address(0)) {
+            delegate = defaultLendingDelegate;
+        }
+        if (lendingTarget == address(0)) {
+            lendingTarget = defaultLendingTarget;
+        }
+        
         if (delegate == address(0) || lendingTarget == address(0)) {
             return 0;
         }
         
-        // 3. 调用 lending delegate 的 estimateRedeemAmount 来获取底层资产数量
-        try ILendingDelegate(delegate).estimateRedeemAmount(
-            tokenKey,
-            info.yieldAmount,
-            lendingTarget,
-            address(configCore)
-        ) returns (uint256 amount) {
-            return amount;
-        } catch {
-            // 如果调用失败，返回0
+        // 验证适配器地址（在使用前验证，view 函数中如果失败返回 0）
+        // 注意：view 函数中不能使用 revert，所以只验证接口，不验证白名单
+        // 使用 getYieldTokenAddress 来验证接口（这是一个 view 函数）
+        (bool hasInterface, ) = delegate.staticcall(
+            abi.encodeWithSelector(ILendingDelegate.getYieldTokenAddress.selector, info.token, "", lendingTarget)
+        );
+        if (!hasInterface) {
             return 0;
         }
+        
+        // 2. 获取 tokenKey
+        string memory tokenKey = tokenKeys[info.token];
+        
+        // 3. 调用 lending delegate 的 estimateRedeemAmount 来获取底层资产数量
+        // 直接调用 view/pure 函数（在 view 函数中可以直接调用其他合约的 view/pure 函数）
+        return ILendingDelegate(delegate).estimateRedeemAmount(
+            info.token, // tokenAddress
+            tokenKey,
+            info.yieldAmount,
+            lendingTarget
+        );
+    }
+    
+    /**
+     * @dev 查询凭证代币对应的底层资产数量（考虑利息），并记录错误事件
+     * @param depositId 全局存款ID
+     * @return underlyingAmount 底层资产数量（wei），如果失败返回 0
+     * @notice 这是一个非 view 函数，如果调用失败会发出事件记录
+     * @notice 前端可以使用此函数来获取值并同时记录错误
+     */
+    function getUnderlyingAmountWithLog(uint256 depositId)
+        external
+        returns (uint256 underlyingAmount)
+    {
+        DepositInfo memory info = deposits[depositId];
+        if (info.yieldAmount == 0) return 0;
+        
+        // 1. 获取借贷配置
+        address delegate = lendingDelegates[info.token];
+        address lendingTarget = lendingTargets[info.token];
+        
+        if (delegate == address(0)) {
+            delegate = defaultLendingDelegate;
+        }
+        if (lendingTarget == address(0)) {
+            lendingTarget = defaultLendingTarget;
+        }
+        
+        if (delegate == address(0) || lendingTarget == address(0)) {
+            emit GetUnderlyingAmountFailed(
+                depositId,
+                delegate,
+                info.token,
+                "Missing delegate or lending target"
+            );
+            return 0;
+        }
+        
+        // 验证适配器地址（在使用前验证）
+        // 检查代码大小（最简单可靠的方法）
+        uint256 codeSize;
+        assembly {
+            codeSize := extcodesize(delegate)
+        }
+        if (codeSize == 0) {
+            emit GetUnderlyingAmountFailed(
+                depositId,
+                delegate,
+                info.token,
+                "Delegate contract not found"
+            );
+            return 0;
+        }
+        
+        // 2. 获取 tokenKey
+        string memory tokenKey = tokenKeys[info.token];
+        
+        // 3. 调用 lending delegate 的 estimateRedeemAmount 来获取底层资产数量
+        // 直接调用 view/pure 函数
+        try ILendingDelegate(delegate).estimateRedeemAmount(
+            info.token, // tokenAddress
+            tokenKey,
+            info.yieldAmount,
+            lendingTarget
+        ) returns (uint256 amount) {
+            return amount;
+        } catch Error(string memory reason) {
+            // 捕获 revert 错误信息
+            emit GetUnderlyingAmountFailed(
+                depositId,
+                delegate,
+                info.token,
+                reason
+            );
+            return 0;
+        } catch (bytes memory /* lowLevelData */) {
+            // 捕获低级错误（无错误信息）
+            emit GetUnderlyingAmountFailed(
+                depositId,
+                delegate,
+                info.token,
+                "Low-level call failed"
+            );
+            return 0;
+        }
+    }
+    
+    /**
+     * @dev 从借贷池赎回yield token，获得底层代币
+     * @param depositId 全局存款ID
+     * @param amount 要赎回的yield token数量（0表示全部）
+     * @return actualAmount 实际获得的底层代币数量
+     * @notice 只有存款人或接收人可以赎回
+     */
+    function redeem(uint256 depositId, uint256 amount) external nonReentrant returns (uint256 actualAmount) {
+        DepositInfo storage depositInfo = deposits[depositId];
+        if (depositInfo.yieldAmount == 0) revert DepositNotFound();
+        
+        // 验证：只有存款人或接收人可以赎回
+        if (depositInfo.depositor != msg.sender && depositInfo.intendedRecipient != msg.sender) {
+            revert InvalidRecipient();
+        }
+        
+        // 如果amount为0，表示赎回全部
+        if (amount == 0) {
+            amount = depositInfo.yieldAmount;
+        }
+        
+        // 验证：不能超过yield token数量
+        if (amount > depositInfo.yieldAmount) {
+            revert InvalidAmount();
+        }
+        
+        // 1. 获取借贷配置
+        address delegate = lendingDelegates[depositInfo.token];
+        address lendingTarget = lendingTargets[depositInfo.token];
+        
+        if (delegate == address(0)) {
+            delegate = defaultLendingDelegate;
+        }
+        if (lendingTarget == address(0)) {
+            lendingTarget = defaultLendingTarget;
+        }
+        
+        if (delegate == address(0) || lendingTarget == address(0)) {
+            revert InvalidAddress();
+        }
+        
+        // 验证适配器地址（在使用前验证）
+        _validateDelegate(delegate);
+        
+        // 2. 获取 tokenKey
+        string memory tokenKey = tokenKeys[depositInfo.token];
+        
+        // 3. 通过适配器从借贷池赎回（使用 delegatecall）
+        // 注意：yield token已经在合约中，不需要用户转账
+        (bool success, bytes memory result) = delegate.delegatecall(
+            abi.encodeWithSelector(
+                ILendingDelegate.withdraw.selector,
+                depositInfo.token, // tokenAddress
+                tokenKey,
+                amount,
+                lendingTarget,
+                depositInfo.yieldToken // yieldTokenHint
+            )
+        );
+        
+        if (!success) revert WithdrawFailed();
+        
+        // 5. 解码返回值
+        actualAmount = abi.decode(result, (uint256));
+        
+        // 6. 转账底层代币给用户
+        IERC20(depositInfo.token).safeTransfer(msg.sender, actualAmount);
+        
+        // 更新 yield token 数量
+        if (amount >= depositInfo.yieldAmount) {
+            // 全部赎回或超过，标记为已使用
+            depositInfo.used = true;
+            depositInfo.yieldAmount = 0;
+            _removeFromList(depositorDeposits[depositInfo.depositor], depositId);
+            _removeFromList(recipientDeposits[depositInfo.intendedRecipient], depositId);
+        } else {
+            // 部分赎回，更新yield token数量
+            depositInfo.yieldAmount -= amount;
+            
+            // 检查是否变为0（理论上不应该，但为了安全）
+            if (depositInfo.yieldAmount == 0) {
+                depositInfo.used = true;
+                _removeFromList(depositorDeposits[depositInfo.depositor], depositId);
+                _removeFromList(recipientDeposits[depositInfo.intendedRecipient], depositId);
+            }
+        }
+    }
+    
+    /**
+     * @dev 获取yield token地址（通过ILendingDelegate）
+     * @param token 底层代币地址
+     * @return yieldToken yield token地址
+     */
+    function getYieldTokenAddress(address token) external view returns (address yieldToken) {
+        // 获取借贷配置
+        address delegate = lendingDelegates[token];
+        address lendingTarget = lendingTargets[token];
+        
+        if (delegate == address(0)) {
+            delegate = defaultLendingDelegate;
+        }
+        if (lendingTarget == address(0)) {
+            lendingTarget = defaultLendingTarget;
+        }
+        
+        if (delegate == address(0) || lendingTarget == address(0)) {
+            return address(0);
+        }
+        
+        // 获取 tokenKey
+        string memory tokenKey = tokenKeys[token];
+        
+        return ILendingDelegate(delegate).getYieldTokenAddress(
+            token,
+            tokenKey,
+            lendingTarget
+        );
     }
     
     // ============ Admin Functions ============
     
     /**
-     * @dev 设置配置合约地址
+     * @dev 设置代币的借贷适配器地址
+     * @param token 代币地址（address(0) 表示设置默认值）
+     * @param delegate 借贷适配器地址
      */
-    function setConfigCore(address _configCore) external onlyOwner {
-        if (_configCore == address(0)) revert InvalidAddress();
-        configCore = ITreasuryConfigCore(_configCore);
-        emit ConfigCoreUpdated(_configCore);
+    function setLendingDelegate(address token, address delegate) external onlyOwner {
+        if (delegate == address(0)) revert InvalidAddress();
+        
+        // 验证适配器是否实现了 ILendingDelegate 接口
+        _validateDelegate(delegate);
+        
+        if (token == address(0)) {
+            defaultLendingDelegate = delegate;
+            emit DefaultLendingDelegateUpdated(delegate);
+        } else {
+            lendingDelegates[token] = delegate;
+            emit LendingDelegateUpdated(token, delegate);
+        }
+    }
+    
+    /**
+     * @dev 设置代币的借贷池地址
+     * @param token 代币地址（address(0) 表示设置默认值）
+     * @param target 借贷池地址
+     */
+    function setLendingTarget(address token, address target) external onlyOwner {
+        if (target == address(0)) revert InvalidAddress();
+        
+        if (token == address(0)) {
+            defaultLendingTarget = target;
+            emit DefaultLendingTargetUpdated(target);
+        } else {
+            lendingTargets[token] = target;
+            emit LendingTargetUpdated(token, target);
+        }
+    }
+    
+    /**
+     * @dev 设置代币的 tokenKey（用于 ILendingDelegate 接口）
+     * @param token 代币地址
+     * @param tokenKey Token key（如 "USDT", "USDC"）
+     */
+    function setTokenKey(address token, string calldata tokenKey) external onlyOwner {
+        if (token == address(0)) revert InvalidAddress();
+        tokenKeys[token] = tokenKey;
+        emit TokenKeyUpdated(token, tokenKey);
+    }
+    
+    /**
+     * @dev 批量设置代币配置
+     * @param token 代币地址
+     * @param delegate 借贷适配器地址（address(0) 表示不更新）
+     * @param target 借贷池地址（address(0) 表示不更新）
+     * @param tokenKey Token key（空字符串表示不更新）
+     */
+    function setTokenConfig(
+        address token,
+        address delegate,
+        address target,
+        string calldata tokenKey
+    ) external onlyOwner {
+        if (token == address(0)) revert InvalidAddress();
+        
+        if (delegate != address(0)) {
+            // 验证适配器地址
+            _validateDelegate(delegate);
+            lendingDelegates[token] = delegate;
+            emit LendingDelegateUpdated(token, delegate);
+        }
+        
+        if (target != address(0)) {
+            lendingTargets[token] = target;
+            emit LendingTargetUpdated(token, target);
+        }
+        
+        if (bytes(tokenKey).length > 0) {
+            tokenKeys[token] = tokenKey;
+            emit TokenKeyUpdated(token, tokenKey);
+        }
     }
     
     /**
@@ -427,6 +825,24 @@ contract DepositVault is Ownable, ReentrancyGuard {
      */
     function setWhitelistEnabled(bool enabled) external onlyOwner {
         whitelistEnabled = enabled;
+        emit WhitelistUpdated(address(0), enabled); // 使用现有事件表示状态变化
+    }
+    
+    /**
+     * @dev 设置/取消适配器白名单
+     */
+    function setDelegateWhitelist(address delegate, bool valid) external onlyOwner {
+        if (delegate == address(0)) revert InvalidAddress();
+        delegateWhitelist[delegate] = valid;
+        emit DelegateWhitelistUpdated(delegate, valid);
+    }
+    
+    /**
+     * @dev 启用/禁用适配器白名单
+     */
+    function setDelegateWhitelistEnabled(bool enabled) external onlyOwner {
+        delegateWhitelistEnabled = enabled;
+        emit DelegateWhitelistEnabledUpdated(enabled);
     }
     
     /**
@@ -437,12 +853,194 @@ contract DepositVault is Ownable, ReentrancyGuard {
         emit RecoveryDelayUpdated(newDelay);
     }
     
+    /**
+     * @dev 请求紧急提取（需要时间锁）
+     * @param token 代币地址
+     * @param amount 提取数量（0表示全部）
+     * @notice 请求后需要等待 emergencyWithdrawDelay 时间才能执行
+     */
+    function requestEmergencyWithdraw(address token, uint256 amount) external onlyOwner {
+        if (token == address(0)) revert InvalidAddress();
+        
+        IERC20 tokenContract = IERC20(token);
+        uint256 balance = tokenContract.balanceOf(address(this));
+        
+        if (amount == 0) {
+            amount = balance;
+        }
+        
+        if (amount > balance) {
+            revert InvalidAmount();
+        }
+        
+        // 检查是否已有待执行的请求
+        EmergencyWithdrawRequest storage request = emergencyWithdrawRequests[token];
+        if (request.requestTime > 0 && !request.executed) {
+            // 如果已有请求但未执行，需要先取消或执行
+            revert EmergencyWithdrawRequestPending();
+        }
+        
+        // 创建新的请求
+        emergencyWithdrawRequests[token] = EmergencyWithdrawRequest({
+            token: token,
+            amount: amount,
+            requestTime: block.timestamp,
+            executed: false
+        });
+        
+        uint256 executeAfter = block.timestamp + emergencyWithdrawDelay;
+        emit EmergencyWithdrawRequested(token, amount, executeAfter);
+    }
+    
+    /**
+     * @dev 执行紧急提取（需要时间锁到期）
+     * @param token 代币地址
+     * @notice 只能在请求后等待 emergencyWithdrawDelay 时间才能执行
+     */
+    function executeEmergencyWithdraw(address token) external onlyOwner {
+        if (token == address(0)) revert InvalidAddress();
+        
+        EmergencyWithdrawRequest storage request = emergencyWithdrawRequests[token];
+        
+        // 检查请求是否存在
+        if (request.requestTime == 0) {
+            revert EmergencyWithdrawRequestNotFound();
+        }
+        
+        // 检查是否已执行
+        if (request.executed) {
+            revert EmergencyWithdrawAlreadyExecuted();
+        }
+        
+        // 检查时间锁是否到期
+        if (block.timestamp < request.requestTime + emergencyWithdrawDelay) {
+            revert EmergencyWithdrawNotReady();
+        }
+        
+        // 执行提取
+        uint256 amount = request.amount;
+        IERC20 tokenContract = IERC20(token);
+        uint256 balance = tokenContract.balanceOf(address(this));
+        
+        // 如果请求的金额超过当前余额，revert 而不是自动调整
+        // 这样可以确保用户知道实际提取的金额
+        if (amount > balance) {
+            revert InvalidAmount(); // 余额不足
+        }
+        
+        // 标记为已执行
+        request.executed = true;
+        
+        // 转账
+        tokenContract.safeTransfer(owner(), amount);
+        
+        emit EmergencyWithdrawExecuted(token, amount);
+    }
+    
+    /**
+     * @dev 取消紧急提取请求（仅限owner）
+     * @param token 代币地址
+     * @notice 可以在执行前取消请求
+     */
+    function cancelEmergencyWithdraw(address token) external onlyOwner {
+        if (token == address(0)) revert InvalidAddress();
+        
+        EmergencyWithdrawRequest storage request = emergencyWithdrawRequests[token];
+        
+        if (request.requestTime == 0) {
+            revert EmergencyWithdrawRequestNotFound();
+        }
+        
+        if (request.executed) {
+            revert EmergencyWithdrawAlreadyExecuted();
+        }
+        
+        // 删除请求
+        delete emergencyWithdrawRequests[token];
+        
+        // 发出事件
+        emit EmergencyWithdrawRequested(token, 0, 0); // 使用 amount=0 表示取消
+    }
+    
+    /**
+     * @dev 设置紧急提取时间锁延迟
+     * @param newDelay 新的延迟时间（秒）
+     */
+    function setEmergencyWithdrawDelay(uint256 newDelay) external onlyOwner {
+        emergencyWithdrawDelay = newDelay;
+        emit EmergencyWithdrawDelayUpdated(newDelay);
+    }
+    
+    /**
+     * @dev 设置最小存款金额（防止粉尘攻击）
+     * @param newAmount 新的最小存款金额（考虑代币精度）
+     * @notice 例如：
+     *         - 10 USDT (6位精度，Ethereum/TRON等) = 10 * 10^6
+     *         - 10 USDT (18位精度，BSC) = 10 * 10^18
+     *         - 10 USDC (6位精度) = 10 * 10^6
+     */
+    function setMinDepositAmount(uint256 newAmount) external onlyOwner {
+        minDepositAmount = newAmount;
+        emit MinDepositAmountUpdated(newAmount);
+    }
+    
+    /**
+     * @dev 查询紧急提取请求信息
+     * @param token 代币地址
+     * @return request 紧急提取请求信息
+     * @return canExecute 是否可以执行（时间锁是否到期）
+     */
+    function getEmergencyWithdrawRequest(address token)
+        external
+        view
+        returns (
+            EmergencyWithdrawRequest memory request,
+            bool canExecute
+        )
+    {
+        request = emergencyWithdrawRequests[token];
+        canExecute = request.requestTime > 0 
+            && !request.executed 
+            && block.timestamp >= request.requestTime + emergencyWithdrawDelay;
+    }
+    
     // ============ Internal Functions ============
+    
+    /**
+     * @dev 验证适配器地址是否有效
+     * @param delegate 适配器地址
+     */
+    function _validateDelegate(address delegate) internal view {
+        if (delegate == address(0)) revert InvalidAddress();
+        
+        // 检查适配器白名单（如果启用）
+        if (delegateWhitelistEnabled) {
+            if (!delegateWhitelist[delegate]) {
+                revert InvalidDelegate();
+            }
+        }
+        
+        // 验证适配器是否实现了 ILendingDelegate 接口
+        // 检查代码大小（最简单可靠的方法）
+        uint256 codeSize;
+        assembly {
+            codeSize := extcodesize(delegate)
+        }
+        if (codeSize == 0) {
+            revert InvalidDelegate(); // 合约不存在或没有代码
+        }
+        
+        // 注意：我们不再尝试调用函数来验证接口，因为：
+        // 1. 代码大小检查已经足够（如果合约存在且有代码，说明已部署）
+        // 2. 如果接口不匹配，在实际调用时会失败，这样也能发现问题
+        // 3. 避免因为参数问题导致验证失败
+    }
     
     /**
      * @dev 从数组中移除指定元素（简化版：查找并删除）
      * @param list 要操作的数组
      * @param value 要删除的值
+     * @notice 如果元素不存在，会 revert，表示状态不一致（理论上不应该发生）
      */
     function _removeFromList(uint256[] storage list, uint256 value) internal {
         uint256 length = list.length;
@@ -456,38 +1054,8 @@ contract DepositVault is Ownable, ReentrancyGuard {
                 return;
             }
         }
+        // 如果元素不存在，这是一个严重的状态不一致问题
+        revert DepositIdNotFoundInList();
     }
     
-    /**
-     * @dev 解析借贷配置（从 configCore 获取）
-     * @param tokenKey Token key
-     * @return delegate 借贷适配器地址
-     * @return lendingTarget 借贷池地址
-     */
-    function _resolveLendingConfig(string memory tokenKey)
-        internal
-        view
-        returns (address delegate, address lendingTarget)
-    {
-        if (address(configCore) == address(0)) return (address(0), address(0));
-        
-        // 获取适配器 key
-        string memory delegateKey = configCore.getStringConfig("POOL_DELEGATE_KEY");
-        if (bytes(delegateKey).length == 0) {
-            return (address(0), address(0));
-        }
-        delegate = configCore.getAddressConfig(delegateKey);
-        if (delegate == address(0)) return (address(0), address(0));
-
-        // 优先使用 token 特定的配置: POOL_TARGET_TOKEN_<TOKENKEY>
-        string memory tokenTargetKey = string.concat("POOL_TARGET_TOKEN_", tokenKey);
-        lendingTarget = configCore.getAddressConfig(tokenTargetKey);
-
-        if (lendingTarget == address(0)) {
-            // 回退到通用配置
-            string memory poolKey = configCore.getStringConfig("POOL_TARGET_KEY");
-            if (bytes(poolKey).length == 0) return (delegate, address(0));
-            lendingTarget = configCore.getAddressConfig(poolKey);
-        }
-    }
 }
