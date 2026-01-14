@@ -33,16 +33,6 @@ export const DEPOSIT_VAULT_ABI = [
   },
   {
     type: 'function',
-    name: 'redeem',
-    inputs: [
-      { name: 'depositId', type: 'uint256' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    outputs: [{ name: 'actualAmount', type: 'uint256' }],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
     name: 'getDeposit',
     inputs: [
       { name: 'depositId', type: 'uint256' },

@@ -17,7 +17,6 @@ import "./interfaces/ILendingDelegate.sol";
  * 1. 地址A调用 deposit() -> 存入借贷池，获得yield token，托管在合约中
  * 2. 地址B调用 claim() -> 领取yield token
  * 3. 如果地址B没来取，地址A在时间锁后调用 recover() -> 取回yield token
- * 4. 或者调用 redeem() -> 从借贷池赎回yield token，获得底层代币
  * 
  * 多链支持:
  * - 直接在合约中配置借贷适配器和借贷池地址
@@ -232,6 +231,7 @@ contract DepositVault is Ownable, ReentrancyGuard {
         
         // 5. 记录存入前的 yield token 余额
         uint256 yieldBefore = IERC20(yieldToken).balanceOf(address(this));
+        uint256 depositorYieldBefore = IERC20(yieldToken).balanceOf(msg.sender);
         
         // 6. 批准借贷池（使用 forceApprove 以处理非零 allowance 的情况）
         IERC20(token).forceApprove(lendingTarget, amount);
@@ -260,7 +260,8 @@ contract DepositVault is Ownable, ReentrancyGuard {
         
         // 验证：确保 yield token 确实在合约中，而不是在 depositor 地址
         // 这是一个额外的安全检查，确保 lending delegate 正确地将 yield token 发送到合约
-        if (IERC20(yieldToken).balanceOf(msg.sender) > yieldBefore) {
+        uint256 depositorYieldAfter = IERC20(yieldToken).balanceOf(msg.sender);
+        if (depositorYieldAfter > depositorYieldBefore) {
             // 如果 depositor 的余额增加了，说明 yield token 可能被错误地发送到了 depositor
             // 这不应该发生，因为 onBehalfOf 是 address(this)
             revert NoYieldTokenReceived(); // 使用相同的错误，避免暴露内部逻辑
@@ -327,21 +328,26 @@ contract DepositVault is Ownable, ReentrancyGuard {
             if (!validRecipients[recipient]) revert RecipientNotWhitelisted();
         }
         
-        // 转账凭证代币给地址B
-        IERC20(depositInfo.yieldToken).safeTransfer(recipient, depositInfo.yieldAmount);
+        // 保存要转账的金额
+        uint256 amountToClaim = depositInfo.yieldAmount;
         
+        // 先更新状态（防止重入）
         depositInfo.used = true;
+        depositInfo.yieldAmount = 0;
         
         // 从活跃列表中移除
         _removeFromList(depositorDeposits[depositInfo.depositor], depositId);
         _removeFromList(recipientDeposits[depositInfo.intendedRecipient], depositId);
+        
+        // 转账凭证代币给地址B
+        IERC20(depositInfo.yieldToken).safeTransfer(recipient, amountToClaim);
         
         emit Claimed(
             depositInfo.depositor,
             depositId,
             recipient,
             depositInfo.yieldToken,
-            depositInfo.yieldAmount
+            amountToClaim
         );
     }
     
@@ -366,20 +372,25 @@ contract DepositVault is Ownable, ReentrancyGuard {
             revert RecoveryNotAvailable();
         }
         
-        // 转账凭证代币回地址A
-        IERC20(depositInfo.yieldToken).safeTransfer(msg.sender, depositInfo.yieldAmount);
+        // 保存要转账的金额
+        uint256 amountToRecover = depositInfo.yieldAmount;
         
+        // 先更新状态（防止重入）
         depositInfo.used = true;
+        depositInfo.yieldAmount = 0;
         
         // 从活跃列表中移除
         _removeFromList(depositorDeposits[depositInfo.depositor], depositId);
         _removeFromList(recipientDeposits[depositInfo.intendedRecipient], depositId);
         
+        // 转账凭证代币回地址A
+        IERC20(depositInfo.yieldToken).safeTransfer(msg.sender, amountToRecover);
+        
         emit Recovered(
             msg.sender,
             depositId,
             depositInfo.yieldToken,
-            depositInfo.yieldAmount
+            amountToRecover
         );
     }
     
@@ -470,7 +481,18 @@ contract DepositVault is Ownable, ReentrancyGuard {
         view
         returns (uint256 count)
     {
-        return recipientDeposits[recipient].length;
+        uint256[] memory allDepositIds = recipientDeposits[recipient];
+        for (uint256 i = 0; i < allDepositIds.length; i++) {
+            uint256 depositId = allDepositIds[i];
+            DepositInfo storage depositInfo = deposits[depositId];
+            // 只计算未使用且有余额的存款
+            if (!depositInfo.used && depositInfo.yieldAmount > 0) {
+                // 额外验证：确保 intendedRecipient 匹配（防御性检查）
+                if (depositInfo.intendedRecipient == recipient) {
+                    count++;
+                }
+            }
+        }
     }
     
     /**
@@ -607,94 +629,6 @@ contract DepositVault is Ownable, ReentrancyGuard {
                 "Low-level call failed"
             );
             return 0;
-        }
-    }
-    
-    /**
-     * @dev 从借贷池赎回yield token，获得底层代币
-     * @param depositId 全局存款ID
-     * @param amount 要赎回的yield token数量（0表示全部）
-     * @return actualAmount 实际获得的底层代币数量
-     * @notice 只有存款人或接收人可以赎回
-     */
-    function redeem(uint256 depositId, uint256 amount) external nonReentrant returns (uint256 actualAmount) {
-        DepositInfo storage depositInfo = deposits[depositId];
-        if (depositInfo.yieldAmount == 0) revert DepositNotFound();
-        
-        // 验证：只有存款人或接收人可以赎回
-        if (depositInfo.depositor != msg.sender && depositInfo.intendedRecipient != msg.sender) {
-            revert InvalidRecipient();
-        }
-        
-        // 如果amount为0，表示赎回全部
-        if (amount == 0) {
-            amount = depositInfo.yieldAmount;
-        }
-        
-        // 验证：不能超过yield token数量
-        if (amount > depositInfo.yieldAmount) {
-            revert InvalidAmount();
-        }
-        
-        // 1. 获取借贷配置
-        address delegate = lendingDelegates[depositInfo.token];
-        address lendingTarget = lendingTargets[depositInfo.token];
-        
-        if (delegate == address(0)) {
-            delegate = defaultLendingDelegate;
-        }
-        if (lendingTarget == address(0)) {
-            lendingTarget = defaultLendingTarget;
-        }
-        
-        if (delegate == address(0) || lendingTarget == address(0)) {
-            revert InvalidAddress();
-        }
-        
-        // 验证适配器地址（在使用前验证）
-        _validateDelegate(delegate);
-        
-        // 2. 获取 tokenKey
-        string memory tokenKey = tokenKeys[depositInfo.token];
-        
-        // 3. 通过适配器从借贷池赎回（使用 delegatecall）
-        // 注意：yield token已经在合约中，不需要用户转账
-        (bool success, bytes memory result) = delegate.delegatecall(
-            abi.encodeWithSelector(
-                ILendingDelegate.withdraw.selector,
-                depositInfo.token, // tokenAddress
-                tokenKey,
-                amount,
-                lendingTarget,
-                depositInfo.yieldToken // yieldTokenHint
-            )
-        );
-        
-        if (!success) revert WithdrawFailed();
-        
-        // 5. 解码返回值
-        actualAmount = abi.decode(result, (uint256));
-        
-        // 6. 转账底层代币给用户
-        IERC20(depositInfo.token).safeTransfer(msg.sender, actualAmount);
-        
-        // 更新 yield token 数量
-        if (amount >= depositInfo.yieldAmount) {
-            // 全部赎回或超过，标记为已使用
-            depositInfo.used = true;
-            depositInfo.yieldAmount = 0;
-            _removeFromList(depositorDeposits[depositInfo.depositor], depositId);
-            _removeFromList(recipientDeposits[depositInfo.intendedRecipient], depositId);
-        } else {
-            // 部分赎回，更新yield token数量
-            depositInfo.yieldAmount -= amount;
-            
-            // 检查是否变为0（理论上不应该，但为了安全）
-            if (depositInfo.yieldAmount == 0) {
-                depositInfo.used = true;
-                _removeFromList(depositorDeposits[depositInfo.depositor], depositId);
-                _removeFromList(recipientDeposits[depositInfo.intendedRecipient], depositId);
-            }
         }
     }
     
@@ -894,8 +828,9 @@ contract DepositVault is Ownable, ReentrancyGuard {
     
     /**
      * @dev 执行紧急提取（需要时间锁到期）
-     * @param token 代币地址
+     * @param token 代币地址（必须是底层代币，不能是 yield token）
      * @notice 只能在请求后等待 emergencyWithdrawDelay 时间才能执行
+     * @notice 紧急提取只能提取底层代币，不能提取活跃存款的 yield token
      */
     function executeEmergencyWithdraw(address token) external onlyOwner {
         if (token == address(0)) revert InvalidAddress();
@@ -917,6 +852,12 @@ contract DepositVault is Ownable, ReentrancyGuard {
             revert EmergencyWithdrawNotReady();
         }
         
+        // 安全检查：确保 token 不是活跃存款的 yield token
+        // 遍历所有活跃存款，检查是否有 yield token 匹配
+        // 注意：这是一个 gas 消耗较大的操作，但为了安全是必要的
+        // 如果存款数量很大，可以考虑添加限制或使用不同的策略
+        uint256 totalActiveYieldAmount = _getTotalActiveYieldTokenAmount(token);
+        
         // 执行提取
         uint256 amount = request.amount;
         IERC20 tokenContract = IERC20(token);
@@ -926,6 +867,20 @@ contract DepositVault is Ownable, ReentrancyGuard {
         // 这样可以确保用户知道实际提取的金额
         if (amount > balance) {
             revert InvalidAmount(); // 余额不足
+        }
+        
+        // 安全检查：确保提取的金额不会影响活跃存款
+        // 如果 token 是 yield token，计算可提取的最大金额（总余额 - 活跃存款金额）
+        uint256 maxWithdrawable = balance;
+        if (totalActiveYieldAmount > 0) {
+            // token 是 yield token，只能提取超出活跃存款的部分
+            if (balance < totalActiveYieldAmount) {
+                revert InvalidAmount(); // 余额不足以覆盖活跃存款
+            }
+            maxWithdrawable = balance - totalActiveYieldAmount;
+            if (amount > maxWithdrawable) {
+                revert InvalidAmount(); // 提取金额超过可提取部分
+            }
         }
         
         // 标记为已执行
@@ -1005,6 +960,24 @@ contract DepositVault is Ownable, ReentrancyGuard {
     }
     
     // ============ Internal Functions ============
+    
+    /**
+     * @dev 计算指定 yield token 的总活跃存款金额
+     * @param yieldToken yield token 地址
+     * @return totalAmount 总活跃存款金额
+     * @notice 这是一个 gas 消耗较大的操作，用于安全检查
+     */
+    function _getTotalActiveYieldTokenAmount(address yieldToken) internal view returns (uint256 totalAmount) {
+        // 遍历所有可能的存款（通过 depositCount）
+        // 注意：这是一个 O(n) 操作，如果存款数量很大，gas 消耗会很高
+        // 但在紧急情况下，这是必要的安全检查
+        for (uint256 i = 0; i < depositCount; i++) {
+            DepositInfo storage info = deposits[i];
+            if (!info.used && info.yieldToken == yieldToken && info.yieldAmount > 0) {
+                totalAmount += info.yieldAmount;
+            }
+        }
+    }
     
     /**
      * @dev 验证适配器地址是否有效

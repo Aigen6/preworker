@@ -91,6 +91,9 @@ contract AAVEv3Delegate is ILendingDelegate {
         address aToken = yieldTokenHint;
         if (aToken == address(0)) revert UnknownAToken();
 
+        // Note: onBehalfOf should be address(this) = DepositVault for delegatecall context
+        if (onBehalfOf != address(this)) revert InvalidOnBehalfOf();
+
         uint256 beforeBal = IAToken(aToken).balanceOf(onBehalfOf);
 
         // Call Aave V3 supply (executes in DepositVault's context)

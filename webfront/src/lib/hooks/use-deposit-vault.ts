@@ -447,17 +447,6 @@ export function useDepositVault() {
   )
 
   /**
-   * 赎回凭证代币为底层代币（USDT）
-   * 注意：此方法已废弃，应该使用 redeemDirectly 直接调用借贷协议
-   */
-  const redeem = useCallback(
-    async (params: { vaultAddress: string; depositId: string; amount?: bigint }) => {
-      throw new Error('redeem 方法已废弃，请使用 redeemDirectly 直接调用借贷协议')
-    },
-    []
-  )
-
-  /**
    * 查询存款信息（通过全局存款ID）
    */
   const getDeposit = useCallback(
@@ -865,7 +854,6 @@ export function useDepositVault() {
     deposit,
     claim,
     recover,
-    redeem,
     redeemDirectly,
     getDeposit,
     getDepositIds,
