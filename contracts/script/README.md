@@ -170,9 +170,11 @@ vault.setTokenConfig(
 
 ### JustLend jToken 地址（TRON）
 
-- **jUSDT**: `TYZRXTRxTDw5pVjV8S3McZ3Xzr1PQHcFk`
-- **jUSDC**: `TYukBQZ2XXCcRCReAUguyXncCWNY9CEiDQ`
-- **jTRX**: `TQn9Y2khEsLMWTgY5v3o1cJhGp1T5WJzFp`
+jToken 地址配置在 `script/config/tron-mainnet.json` 文件中，便于维护和更新。
+
+主要代币的 jToken 地址请参考配置文件，或从 JustLend 官方文档获取最新地址：
+- https://justlend.org/
+- https://tronscan.org/
 
 ## 注意事项
 

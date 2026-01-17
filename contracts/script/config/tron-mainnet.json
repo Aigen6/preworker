@@ -1,0 +1,11 @@
+{
+  "network": "tron-mainnet",
+  "tokens": {
+    "USDT": {
+      "tokenKey": "USDT",
+      "address": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+      "jToken": "TXJgMdjVX5dKiQaUi9QobwNxtSQaFqccvd",
+      "decimals": 6
+    }
+  }
+}
