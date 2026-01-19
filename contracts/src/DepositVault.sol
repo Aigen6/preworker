@@ -52,19 +52,12 @@ contract DepositVault is Ownable, ReentrancyGuard {
     // depositor => depositId[]（只包含未使用的）
     mapping(address => uint256[]) public depositorDeposits;
     
-    // 可选：地址B白名单（如果启用）
-    mapping(address => bool) public validRecipients;
-    bool public whitelistEnabled;
-    
     // 可选：取回时间锁（默认3天）
     uint256 public recoveryDelay = 3 days;
     
     // 紧急提取时间锁（默认2天）
     uint256 public emergencyWithdrawDelay = 2 days;
     
-    // 最小存款金额（防止粉尘攻击，默认 10 USDT，考虑6位精度：10 * 10^6）
-    // 注意：BSC 上的 USDT 是 18 位精度，其他链（Ethereum、TRON等）是 6 位精度
-    uint256 public minDepositAmount = 10 * 10**6;
     
     // 紧急提取请求
     struct EmergencyWithdrawRequest {
@@ -77,14 +70,31 @@ contract DepositVault is Ownable, ReentrancyGuard {
     // 每个代币的紧急提取请求（一次只能有一个待执行的请求）
     mapping(address => EmergencyWithdrawRequest) public emergencyWithdrawRequests;
     
+    /**
+     * @dev 存款信息结构体（优化存储布局，从 7 slot 压缩到 4 slot）
+     * @notice 字段顺序经过精心安排以实现最优的 storage packing
+     * 
+     * Storage Layout:
+     * - Slot 1: depositor (20 bytes) + depositTime (5 bytes) + used (1 byte) = 26 bytes
+     * - Slot 2: intendedRecipient (20 bytes) + yieldAmount (12 bytes) = 32 bytes
+     * - Slot 3: yieldToken (20 bytes)
+     * - Slot 4: token (20 bytes)
+     */
     struct DepositInfo {
-        address depositor;          // 存款人地址（源地址）
-        address token;              // 底层代币地址
-        address yieldToken;         // 凭证代币地址
-        uint256 yieldAmount;        // 凭证代币数量
-        address intendedRecipient;  // 预期的接收地址B（中转地址）
-        uint256 depositTime;        // 存款时间
-        bool used;                  // 是否已被使用（领取或取回）
+        // Slot 1: 26 bytes used
+        address depositor;          // 20 bytes - 存款人地址（源地址）
+        uint40 depositTime;         // 5 bytes  - 存款时间（最大到年份 36812）
+        bool used;                  // 1 byte   - 是否已被使用（领取或取回）
+        
+        // Slot 2: 32 bytes used (完美填充)
+        address intendedRecipient;  // 20 bytes - 预期的接收地址B（中转地址）
+        uint96 yieldAmount;         // 12 bytes - 凭证代币数量（最大 ~79 万亿，足够）
+        
+        // Slot 3: 20 bytes used
+        address yieldToken;         // 20 bytes - 凭证代币地址
+        
+        // Slot 4: 20 bytes used
+        address token;              // 20 bytes - 底层代币地址
     }
     
     event Deposited(
@@ -112,7 +122,6 @@ contract DepositVault is Ownable, ReentrancyGuard {
         uint256 amount
     );
     
-    event WhitelistUpdated(address indexed recipient, bool valid);
     event RecoveryDelayUpdated(uint256 newDelay);
     event LendingDelegateUpdated(address indexed token, address indexed delegate);
     event LendingTargetUpdated(address indexed token, address indexed target);
@@ -131,7 +140,6 @@ contract DepositVault is Ownable, ReentrancyGuard {
     event EmergencyWithdrawDelayUpdated(uint256 newDelay);
     event DelegateWhitelistUpdated(address indexed delegate, bool valid);
     event DelegateWhitelistEnabledUpdated(bool enabled);
-    event MinDepositAmountUpdated(uint256 newAmount);
     event GetUnderlyingAmountFailed(
         uint256 indexed depositId,
         address indexed delegate,
@@ -144,7 +152,6 @@ contract DepositVault is Ownable, ReentrancyGuard {
     error DepositNotFound();
     error AlreadyUsed(); // 已被使用（领取或取回）
     error RecoveryNotAvailable();
-    error RecipientNotWhitelisted();
     error InvalidRecipient(); // 不是预期的接收地址
     error YieldTokenNotFound();
     error NoYieldTokenReceived();
@@ -156,7 +163,6 @@ contract DepositVault is Ownable, ReentrancyGuard {
     error EmergencyWithdrawRequestPending(); // 已有待执行的请求
     error InvalidDelegate(); // 无效的适配器地址
     error InvalidLendingTarget(); // 无效的借贷池地址
-    error DepositAmountTooSmall(); // 存款金额太小（小于最小限制）
     error DepositIdNotFoundInList(); // 存款ID不在列表中（状态不一致）
     
     // 适配器白名单（可选，如果启用，只允许白名单中的适配器）
@@ -191,11 +197,6 @@ contract DepositVault is Ownable, ReentrancyGuard {
         if (token == address(0)) revert InvalidAddress();
         if (amount == 0) revert InvalidAmount();
         if (intendedRecipient == address(0)) revert InvalidAddress();
-        
-        // 检查最小存款金额（防止粉尘攻击）
-        if (amount < minDepositAmount) {
-            revert DepositAmountTooSmall();
-        }
         
         // 1. 获取借贷配置（优先使用代币特定配置，否则使用默认配置）
         address delegate = lendingDelegates[token];
@@ -233,8 +234,12 @@ contract DepositVault is Ownable, ReentrancyGuard {
         uint256 yieldBefore = IERC20(yieldToken).balanceOf(address(this));
         uint256 depositorYieldBefore = IERC20(yieldToken).balanceOf(msg.sender);
         
-        // 6. 批准借贷池（使用 forceApprove 以处理非零 allowance 的情况）
-        IERC20(token).forceApprove(lendingTarget, amount);
+        // 6. 批准借贷池（只在 allowance 不足时才 approve，节省 gas）
+        // allowance() 是 view 函数，只需要 ~2600 gas（vs forceApprove 的 ~25000 gas）
+        if (IERC20(token).allowance(address(this), lendingTarget) < amount) {
+            // 使用 forceApprove 设置为 max，后续 deposit 不再需要 approve
+            IERC20(token).forceApprove(lendingTarget, type(uint256).max);
+        }
         
         // 7. 通过适配器存入借贷池（使用 delegatecall）
         (bool success, ) = delegate.delegatecall(
@@ -276,14 +281,19 @@ contract DepositVault is Ownable, ReentrancyGuard {
         }
         depositId = depositCount++;
         
+        // 检查 yieldAmount 是否超过 uint96 最大值（约 79 万亿）
+        if (yieldAmount > type(uint96).max) {
+            revert InvalidAmount();
+        }
+        
         deposits[depositId] = DepositInfo({
             depositor: msg.sender,
-            token: token,
-            yieldToken: yieldToken,
-            yieldAmount: yieldAmount,
+            depositTime: uint40(block.timestamp),
+            used: false,
             intendedRecipient: intendedRecipient,
-            depositTime: block.timestamp,
-            used: false
+            yieldAmount: uint96(yieldAmount),
+            yieldToken: yieldToken,
+            token: token
         });
         
         // 10. 添加到活跃列表（只记录未使用的）
@@ -312,7 +322,7 @@ contract DepositVault is Ownable, ReentrancyGuard {
         
         DepositInfo storage depositInfo = deposits[depositId];
         
-        // 验证存款是否存在
+        // 验证存款是否存在（yieldAmount 是 uint96）
         if (depositInfo.yieldAmount == 0) revert DepositNotFound();
         
         // 验证：不能重复使用（已领取或已取回）
@@ -323,13 +333,8 @@ contract DepositVault is Ownable, ReentrancyGuard {
             revert InvalidRecipient(); // 不是预期的接收地址
         }
         
-        // 可选：验证白名单（如果启用）
-        if (whitelistEnabled) {
-            if (!validRecipients[recipient]) revert RecipientNotWhitelisted();
-        }
-        
-        // 保存要转账的金额
-        uint256 amountToClaim = depositInfo.yieldAmount;
+        // 保存要转账的金额（转为 uint256 用于 transfer）
+        uint256 amountToClaim = uint256(depositInfo.yieldAmount);
         
         // 先更新状态（防止重入）
         depositInfo.used = true;
@@ -367,13 +372,13 @@ contract DepositVault is Ownable, ReentrancyGuard {
         // 验证：不能重复使用（已领取或已取回）
         if (depositInfo.used) revert AlreadyUsed();
         
-        // 时间锁检查
-        if (block.timestamp < depositInfo.depositTime + recoveryDelay) {
+        // 时间锁检查（depositTime 是 uint40，会自动转为 uint256 进行计算）
+        if (block.timestamp < uint256(depositInfo.depositTime) + recoveryDelay) {
             revert RecoveryNotAvailable();
         }
         
-        // 保存要转账的金额
-        uint256 amountToRecover = depositInfo.yieldAmount;
+        // 保存要转账的金额（转为 uint256 用于 transfer）
+        uint256 amountToRecover = uint256(depositInfo.yieldAmount);
         
         // 先更新状态（防止重入）
         depositInfo.used = true;
@@ -747,22 +752,6 @@ contract DepositVault is Ownable, ReentrancyGuard {
     }
     
     /**
-     * @dev 设置/取消地址B白名单
-     */
-    function setValidRecipient(address recipient, bool valid) external onlyOwner {
-        validRecipients[recipient] = valid;
-        emit WhitelistUpdated(recipient, valid);
-    }
-    
-    /**
-     * @dev 启用/禁用白名单
-     */
-    function setWhitelistEnabled(bool enabled) external onlyOwner {
-        whitelistEnabled = enabled;
-        emit WhitelistUpdated(address(0), enabled); // 使用现有事件表示状态变化
-    }
-    
-    /**
      * @dev 设置/取消适配器白名单
      */
     function setDelegateWhitelist(address delegate, bool valid) external onlyOwner {
@@ -926,18 +915,6 @@ contract DepositVault is Ownable, ReentrancyGuard {
         emit EmergencyWithdrawDelayUpdated(newDelay);
     }
     
-    /**
-     * @dev 设置最小存款金额（防止粉尘攻击）
-     * @param newAmount 新的最小存款金额（考虑代币精度）
-     * @notice 例如：
-     *         - 10 USDT (6位精度，Ethereum/TRON等) = 10 * 10^6
-     *         - 10 USDT (18位精度，BSC) = 10 * 10^18
-     *         - 10 USDC (6位精度) = 10 * 10^6
-     */
-    function setMinDepositAmount(uint256 newAmount) external onlyOwner {
-        minDepositAmount = newAmount;
-        emit MinDepositAmountUpdated(newAmount);
-    }
     
     /**
      * @dev 查询紧急提取请求信息
