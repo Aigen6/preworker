@@ -1,0 +1,186 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+main
+server
+backend
+go-backend
+zkpay-backend
+test-build
+test-server
+__debug_bin*
+debug-checkbook
+proof
+
+# Uploads directory (user uploaded files)
+uploads/
+uploads/**/*
+
+# Go workspace file
+go.work
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+coverage.txt
+
+# Dependency directories
+vendor/
+node_modules/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Configuration files with sensitive data
+config.yaml
+config.local.yaml
+config.production.yaml
+config.docker.yaml
+config.backend.yaml
+config.test.yaml
+backend-config.yaml
+temp-config.yaml
+*.local.yaml
+*.config.yaml
+# Environment files - ignore all .env files and variants
+.env
+.env.*
+.env.local
+.env.*.local
+.env.production
+.env.development
+.env.test
+.env.staging
+.env.docker
+.env.backend
+# But keep example files
+!.env.example
+!env.example
+!env.docker.example
+!env.*.example
+
+# Keep example configs
+!config.yaml.example
+!env.example
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+test.db
+test_backend.db
+
+# Log files
+*.log
+logs/
+*.out
+
+# Test results and coverage
+test-results/
+coverage/
+
+# Private keys and sensitive data
+*.pem
+*.key
+private-key-config.yaml
+full_key.txt
+
+# Build artifacts
+bin/
+build/
+dist/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Migration temporary files
+migrations/*.tmp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Scripts output
+*.test.log
+*-report-*.txt
+
+# SQL dumps
+*.sql.backup
+*.sql.dump
+
+# Backup files
+*.backup
+*.bak
+*.old
+
+# Process ID files
+*.pid
+**/.pid
+
+# Docker volumes
+postgres_data/
+redis_data/
+
+# JavaScript/Node (for testing scripts)
+package-lock.json
+node_modules/
+
+# Compiled binaries from tests
+test-buildcommitment-*
+test-enhanced-*
+test-event-*
+
+# Large binary files
+*.REMOVED.git-id
+
+# Intermediate generated documentation (analysis/debug docs)
+COMMITMENT_*.md
+CREDENTIAL_*.md
+DEBUG_*.md
+NULLIFIER_*.md
+ANALYSIS_*.md
+CHECK_*.md
+FIX_*.md
+*_ANALYSIS.md
+*_COMPARISON.md
+*_ROOT_CAUSE.md
+*_MISMATCH*.md
+*_NOTES.md
+apply-migration-*.md
+MIGRATION_*.md
+QUERY_*.md
+RESET_*.md
+VERIFY_*.md
+*_FLOW.md
+*_SUMMARY.md
+*_DESIGN.md
+*_SETUP.md
+*_TROUBLESHOOTING.md
+*_RELEASE_NOTES.md
+*_COMPATIBILITY_REPORT.md
+*_UPDATE_SUMMARY.md
+*_INTEGRATION.md
+*_TEST_RESULTS.md
+*_VERIFICATION.md
+*_UPDATE_VERIFICATION.md
+

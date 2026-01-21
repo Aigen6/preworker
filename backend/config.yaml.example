@@ -1,0 +1,285 @@
+# ZKPay Backend Configuration Example
+# Copy this file to config.yaml and modify according to your environment
+
+server:
+  host: "0.0.0.0"
+  port: 3001
+
+database:
+  # PostgreSQL (recommended for production)
+  dsn: "host=localhost user=zkpay password=your_password dbname=zkpay port=5432 sslmode=disable TimeZone=Asia/Shanghai"
+  
+  # SQLite (for development/testing only)
+  # dsn: "file:zkpay.db?cache=shared&mode=rwc"
+
+# NATS Configuration
+nats:
+  url: "nats://localhost:4222"
+  timeout: 30
+  reconnect_wait: 2
+  max_reconnects: 10
+  enable_jetstream: true
+
+  # Event Subscriptions
+  subscriptions:
+    deposits:
+      - subject: "zkpay.*.Treasury.DepositReceived"
+        description: "Deposit events from business chains"
+        enabled: true
+      - subject: "zkpay.bsc.ZKPayProxy.DepositRecorded"
+        description: "Deposit recorded on management chain"
+        enabled: true
+      - subject: "zkpay.bsc.ZKPayProxy.DepositUsed"
+        description: "Deposit used events"
+        enabled: true
+
+    commitments:
+      - subject: "zkpay.bsc.ZKPayProxy.CommitmentRootUpdated"
+        description: "Queue root updated events"
+        enabled: true
+
+    withdrawals:
+      - subject: "zkpay.bsc.ZKPayProxy.WithdrawRequested"
+        description: "Withdrawal request events"
+        enabled: true
+      - subject: "zkpay.*.Treasury.WithdrawExecuted"
+        description: "Withdrawal execution events"
+        enabled: true
+
+# Redis Configuration (optional)
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  timeout: 30
+
+# Blockchain Networks Configuration
+blockchain:
+  # Global ZKPay Proxy contract address (same for all chains)
+  # This address is used across all chains, so it's configured at the blockchain level
+  # Priority: Environment Variable (ZKPAY_PROXY) > This config > Network-specific config
+  zkpay_proxy: "0xF5Dc3356F755E027550d82F665664b06977fa6d0"  # Global ZKPay Proxy address
+  
+  networks:
+    # Binance Smart Chain (BSC)
+    bsc:
+      chainId: 714  # SLIP-44 Coin Type for BSC
+      rpcEndpoints:
+        - "https://bsc-dataseed1.binance.org/"
+        - "https://bsc-dataseed2.binance.org/"
+        - "https://bsc-dataseed3.binance.org/"
+      
+      # Key Management Options (choose one)
+      # Option 1: Direct Private Key
+      privateKey: "your_private_key_hex_without_0x"
+      usePrivateKey: true
+      kmsEnabled: false
+      
+      # Option 2: KMS (uncomment to use)
+      # usePrivateKey: false
+      # kmsEnabled: true
+      
+      enabled: true
+      
+      # Contract Addresses
+      contractAddresses:
+        zkpay_proxy: "0xF5Dc3356F755E027550d82F665664b06977fa6d0"
+        zkpay_contract: "0xF5Dc3356F755E027550d82F665664b06977fa6d0"
+        contract_address_config: "0x..."  # Optional
+      
+      # Token Base Fees (in smallest unit)
+      tokenBaseFees:
+        0: "1000000000000000000"  # Default fee
+        1: "1000000"              # USDT (6 decimals): 1 USDT
+        2: "1000000"              # USDC (6 decimals): 1 USDC
+        3: "1000000000000000"     # WETH (18 decimals): 0.001 ETH
+      
+      # Token Configurations
+      tokenConfigs:
+        0:
+          symbol: "DEFAULT"
+          decimals: 6
+          managementDecimals: 18
+        1:
+          symbol: "USDT"
+          decimals: 6           # Actual decimals on chain
+          managementDecimals: 18 # Management contract decimals
+        2:
+          symbol: "USDC"
+          decimals: 6
+          managementDecimals: 18
+        3:
+          symbol: "WETH"
+          decimals: 18
+          managementDecimals: 18
+
+    # TRON Network
+    tron:
+      chainId: 195  # SLIP-44 Coin Type for TRON
+      rpcEndpoints:
+        - "https://api.trongrid.io"
+        - "https://api.tronstack.io"
+      
+      privateKey: "your_tron_private_key_hex"
+      usePrivateKey: true
+      kmsEnabled: false
+      enabled: true
+      
+      contractAddresses:
+        zkpay_proxy: "TYourContractAddressHere"
+        treasury_contract: "TYourTreasuryAddressHere"
+      
+      tokenBaseFees:
+        0: "1000000"  # TRX (6 decimals)
+        1: "1000000"  # USDT-TRC20 (6 decimals): 1 USDT
+        2: "1000000"  # USDC-TRC20 (6 decimals): 1 USDC
+      
+      tokenConfigs:
+        0:
+          symbol: "TRX"
+          decimals: 6
+          managementDecimals: 18
+        1:
+          symbol: "USDT"
+          decimals: 6
+          managementDecimals: 18
+        2:
+          symbol: "USDC"
+          decimals: 6
+          managementDecimals: 18
+
+    # Anvil Local Testnet (for development)
+    anvil:
+      chainId: 31337
+      rpcURL: "http://localhost:8545"
+      privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+      contractAddresses:
+        zkpay_proxy: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      tokenBaseFees:
+        1: "1000000"
+        2: "1000000"
+        3: "1000000000000000"
+      baseFeeAmount: "1000000"
+
+# ZKVM Service Configuration
+zkvm:
+  baseUrl: "http://localhost:18081"
+  timeout: 300  # 5 minutes (proof generation takes time)
+  retries: 3
+
+# BlockScanner Service Configuration
+scanner:
+  type: "nats"  # "nats" or "http"
+  
+  http:
+    baseURL: "http://localhost:18080"
+    timeout: 30
+    retries: 3
+  
+  nats:
+    enabled: true
+
+# KMS (Key Management Service) Configuration
+kms:
+  enabled: false
+  baseURL: "http://kms-service:8080"
+  timeout: 30
+
+# Admin API 访问控制配置
+admin:
+  # 允许访问 admin API 的 IP 地址列表
+  # 当通过 Docker 端口映射访问时，客户端 IP 会是 Docker 网关 IP (如 172.18.0.1)
+  # 因此需要将 Docker 网络 IP 段加入白名单
+  # 支持单个 IP 地址或 CIDR 格式（如 172.0.0.0/8）
+  allowedIPs:
+    - "127.0.0.1"      # 本地回环地址
+    - "::1"             # IPv6 本地回环地址
+    - "172.18.0.1"      # Docker 默认网关 IP
+    - "172.0.0.0/8"     # Docker 网络 IP 段（172.16.0.0/12 的扩展）
+    - "192.168.0.0/16"  # 私有网络 IP 段
+    - "10.0.0.0/8"      # 私有网络 IP 段
+  # 注意：如果不配置 allowedIPs，默认只允许 localhost 访问（向后兼容）
+
+# Logging Configuration
+logging:
+  level: "info"      # debug, info, warn, error
+  file: "backend.log"
+  console: true
+  format: "json"     # json or text
+
+# JWT Configuration
+jwt:
+  secret: "your-secret-key-change-this-in-production"
+  accessTokenExpiry: 3600    # 1 hour in seconds
+  refreshTokenExpiry: 604800 # 7 days in seconds
+
+# CORS Configuration
+cors:
+  allowedOrigins:
+    - "http://localhost:3000"
+    - "http://localhost:5173"
+    - "https://yourdomain.com"
+  allowCredentials: true
+  maxAge: 3600
+
+# Rate Limiting (optional)
+rateLimit:
+  enabled: true
+  requestsPerMinute: 100
+  burstSize: 200
+
+# WebSocket Configuration
+websocket:
+  readBufferSize: 1024
+  writeBufferSize: 1024
+  pingInterval: 30
+  pongWait: 60
+  writeWait: 10
+
+# Retry Service Configuration
+retry:
+  enabled: true
+  interval: 10          # Check every 10 seconds
+  maxRetries: 5
+  retryDelay: 30        # Wait 30 seconds between retries
+
+# Performance Tuning
+database_pool:
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300  # 5 minutes
+
+# Feature Flags
+features:
+  enable_websocket: true
+  enable_retry_service: true
+  enable_event_processing: true
+  enable_metrics: false
+
+# KYT Oracle service configuration
+kyt_oracle:
+  base_url: "http://localhost:8090"  # KYT Oracle service base URL (can be overridden by KYT_ORACLE_URL env var)
+
+# Statistics API Configuration
+statistics:
+  # Whitelist IP addresses that can access statistics API without JWT authentication
+  #
+  # Usage:
+  # - With JWT: GET /api/statistics/checkbooks/daily?start_date=2024-01-01
+  #   Header: Authorization: Bearer <token>
+  #
+  # - With IP Whitelist: GET /api/statistics/checkbooks/daily?address=0x...&chain_id=714&start_date=2024-01-01
+  #   No Authorization header needed (IP must be in whitelist)
+  #
+  # Notes:
+  # - Supports single IP addresses or CIDR ranges (e.g., "192.168.1.0/24")
+  # - Localhost (127.0.0.1, ::1) is always allowed
+  # - Whitelisted IPs can query any address statistics (via address parameter)
+  # - Non-whitelisted IPs must use JWT authentication
+  whitelistIPs:
+    # Example: Add IP addresses or CIDR ranges here
+    # - "127.0.0.1"        # Localhost
+    # - "192.168.1.100"    # Single IP
+    # - "192.168.1.0/24"   # CIDR range
+    # - "10.0.0.0/8"       # Private network range

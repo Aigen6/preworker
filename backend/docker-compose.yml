@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  # ZKPay Backend Service
+  zkpay-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zkpay-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - CONFIG_FILE=/app/config.backend.yaml
+    volumes:
+      - ./config.docker.yaml:/app/config.backend.yaml:ro
+      - ./logs:/root/logs
+    depends_on:
+      - postgres
+      - nats
+      - redis
+    networks:
+      - zkpay-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:13-alpine
+    container_name: zkpay-postgres
+    environment:
+      POSTGRES_USER: zkpay
+      POSTGRES_PASSWORD: zkpay_secure_password
+      POSTGRES_DB: zkpay
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./setup-postgresql.sql:/docker-entrypoint-initdb.d/setup.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - zkpay-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zkpay"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # NATS Message Queue with JetStream
+  nats:
+    image: nats:latest
+    container_name: zkpay-nats
+    command: ["-js", "-m", "8222"]
+    ports:
+      - "4222:4222"  # Client connections
+      - "8222:8222"  # HTTP monitoring
+    volumes:
+      - nats_data:/data
+    networks:
+      - zkpay-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Redis Cache (Optional)
+  redis:
+    image: redis:7-alpine
+    container_name: zkpay-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - zkpay-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # pgAdmin (Optional - for database management)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: zkpay-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@zkpay.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - zkpay-network
+    restart: unless-stopped
+    profiles:
+      - debug
+
+volumes:
+  postgres_data:
+    driver: local
+  nats_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  zkpay-network:
+    driver: bridge
+

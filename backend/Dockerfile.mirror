@@ -1,0 +1,81 @@
+# 使用国内镜像源的 Dockerfile
+# 如果 Docker Hub 访问有问题，可以使用这个版本
+
+# 使用阿里云镜像源
+FROM registry.cn-hangzhou.aliyuncs.com/acs/golang:1.23-alpine AS builder
+
+# 或者使用中科大镜像源（如果阿里云不可用，可以尝试这个）
+# FROM docker.mirrors.ustc.edu.cn/library/golang:1.23-alpine AS builder
+
+# Install build dependencies (git for go mod download)
+RUN apk add --no-cache git
+
+WORKDIR /app
+
+# Copy dependency files (leverage Docker cache)
+COPY go.mod go.sum ./
+
+# Disable CGO - PostgreSQL driver (jackc/pgx/v5) is pure Go and doesn't need CGO
+# SQLite is not used in production, so we can disable CGO to avoid cross-compilation issues
+ENV CGO_ENABLED=0
+# Skip Go version check
+ENV GOTOOLCHAIN=local
+ENV GOPROXY=direct
+ENV GOSUMDB=off
+# Disable Go version check completely
+ENV GODEBUG=gotypesalias=0
+ENV GO111MODULE=on
+
+# Download dependencies (leverage Docker cache)
+RUN go mod download
+
+# Copy source code (code changes won't affect dependency layer cache)
+COPY . .
+
+# Build the application
+# Use TARGETOS and TARGETARCH build args for cross-compilation support
+# These are automatically set by Docker buildx when using --platform
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+# Cross-compile without CGO (pure Go build)
+# PostgreSQL driver (jackc/pgx/v5) is pure Go, so CGO is not needed
+# This avoids Go 1.23 compiler crash issues with CGO cross-compilation
+RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o zkpay-backend ./cmd/server
+
+# Final stage - 使用国内镜像源
+FROM docker.mirrors.ustc.edu.cn/library/alpine:latest
+
+# 或者使用阿里云镜像源
+# FROM registry.cn-hangzhou.aliyuncs.com/acs/alpine:latest
+
+# Install runtime dependencies
+RUN apk --no-cache add ca-certificates tzdata
+
+WORKDIR /root/
+
+# Copy compiled binary from builder
+COPY --from=builder /app/zkpay-backend .
+
+# Note: Configuration file should be mounted at runtime via volume
+# Example: -v $(pwd)/config.yaml:/root/config.backend.yaml
+
+# Expose service port
+EXPOSE 3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:3001/health || exit 1
+
+# Run the application
+CMD ["./zkpay-backend", "-conf", "config.backend.yaml"]
+
+
+
+
+
+
+
+
+
