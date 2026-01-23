@@ -31,7 +31,7 @@ function loadNetworkConfig() {
  * 可选参数:
  *   --delegate=<address>   : 已部署的 JustLend 适配器地址（不提供则自动部署）
  *   --api-key=<key>        : TronGrid API Key
- *   --fee-limit=<number>   : 手续费限制（默认 300 TRX）
+ *   --fee-limit=<number>   : 手续费限制（默认 500 TRX）
  *   --testnet              : 使用 Shasta 测试网
  *   --dry-run              : 仅检查配置，不实际部署
  * 
@@ -50,7 +50,7 @@ function parseArgs() {
         privateKey: null,
         delegate: null,
         apiKey: null,
-        feeLimit: 300_000_000,
+        feeLimit: 500_000_000,
         dryRun: false,
         testnet: false
     };
@@ -356,7 +356,7 @@ function loadArtifact(fileName) {
     return JSON.parse(fs.readFileSync(artifactPath, "utf8"));
 }
 
-async function deployFromArtifact(tronWeb, label, fileName, parameters, privateKeyRaw, deployerAddress, feeLimit = 300_000_000) {
+async function deployFromArtifact(tronWeb, label, fileName, parameters, privateKeyRaw, deployerAddress, feeLimit = 500_000_000) {
     const artifact = loadArtifact(fileName);
     console.log(`\n部署 ${label} ...`);
     
