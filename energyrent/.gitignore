@@ -59,9 +59,7 @@ coverage/
 !.env.example
 **/.env
 **/.env.*
-!**/.env.example
-
-# Temporary files
+!**/.env.example# Temporary files
 *.tmp
 *.temp
 *.bak
@@ -72,9 +70,7 @@ coverage/
 
 # Build outputs
 build/
-*.tgz
-
-# Database files
+*.tgz# Database files
 *.db
 *.sqlite
 *.sqlite3

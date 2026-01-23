@@ -904,9 +904,17 @@ func (s *ProofGenerationService) continueWithdrawSubmission(
 		if isContractRevert {
 			// 验证失败，不可重试
 			s.db.Model(&withdrawRequest).Update("execute_status", models.ExecuteStatusVerifyFailed)
+			// 立即更新关联的 Check 状态为 idle（释放 allocations）
+			if updateErr := s.updateChecksStatusOnFailure(withdrawRequest.ID, models.ExecuteStatusVerifyFailed); updateErr != nil {
+				log.Printf("⚠️ [ProofGenerationService] Failed to update checks status: %v", updateErr)
+			}
 		} else {
 			// 网络错误，可重试
 			s.db.Model(&withdrawRequest).Update("execute_status", models.ExecuteStatusSubmitFailed)
+			// 立即更新关联的 Check 状态（提交失败，但可以重试，保持 pending）
+			if updateErr := s.updateChecksStatusOnFailure(withdrawRequest.ID, models.ExecuteStatusSubmitFailed); updateErr != nil {
+				log.Printf("⚠️ [ProofGenerationService] Failed to update checks status: %v", updateErr)
+			}
 		}
 		return fmt.Errorf("failed to submit withdraw: %w", err)
 	}
@@ -964,3 +972,48 @@ func (s *ProofGenerationService) markWithdrawTaskAsFailed(task *models.WithdrawP
 	}
 }
 
+// updateChecksStatusOnFailure 在提交失败时更新关联的 Check 状态
+func (s *ProofGenerationService) updateChecksStatusOnFailure(requestID string, executeStatus models.ExecuteStatus) error {
+	// 查找所有关联的 Checks
+	var checks []models.Check
+	if err := s.db.Where("withdraw_request_id = ?", requestID).Find(&checks).Error; err != nil {
+		return fmt.Errorf("failed to query checks: %w", err)
+	}
+
+	if len(checks) == 0 {
+		log.Printf("⚠️ [ProofGenerationService] No checks found for WithdrawRequest ID=%s", requestID)
+		return nil
+	}
+
+	checkIDs := make([]string, 0, len(checks))
+	for _, check := range checks {
+		checkIDs = append(checkIDs, check.ID)
+	}
+
+	log.Printf("🔄 [ProofGenerationService] Updating %d checks for WithdrawRequest ID=%s, ExecuteStatus=%s", len(checkIDs), requestID, executeStatus)
+
+	// 根据 executeStatus 决定 Check 的状态
+	switch executeStatus {
+	case models.ExecuteStatusVerifyFailed:
+		// verify_failed：Proof 无效或 nullifier 已使用，不可重试，Check 回退到 idle
+		log.Printf("🔄 [ProofGenerationService] ExecuteStatus=verify_failed, releasing Checks back to idle status")
+		if err := s.db.Model(&models.Check{}).
+			Where("id IN ? AND status = ?", checkIDs, models.AllocationStatusPending).
+			Updates(map[string]interface{}{
+				"status":              models.AllocationStatusIdle,
+				"withdraw_request_id": nil,
+				"updated_at":          time.Now(),
+			}).Error; err != nil {
+			return fmt.Errorf("failed to release allocations: %w", err)
+		}
+		log.Printf("✅ [ProofGenerationService] Released %d checks back to idle status", len(checkIDs))
+
+	case models.ExecuteStatusSubmitFailed:
+		// submit_failed：网络/RPC 错误，可以重试，保持 pending 状态
+		log.Printf("ℹ️ [ProofGenerationService] ExecuteStatus=submit_failed, Checks remain in pending status (can retry)")
+		// 不更新状态，保持 pending，允许重试
+
+	default:
+		log.Printf("ℹ️ [ProofGenerationService] ExecuteStatus=%s, no Check status update needed", executeStatus)
+	}	return nil
+}

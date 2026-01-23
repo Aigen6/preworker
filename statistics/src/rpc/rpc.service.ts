@@ -125,19 +125,21 @@ export class RpcService {
 
       // Process Deposited events
       for (const event of depositedEvents) {
-        if (event.args) {
+        // Type guard for EventLog
+        if ('args' in event && event.args) {
+          const eventLog = event as ethers.EventLog;
           const block = await provider.getBlock(event.blockNumber);
           events.push({
             type: 'Deposited',
             blockNumber: event.blockNumber,
-            transactionHash: event.hash,
-            depositor: event.args.depositor,
-            depositId: event.args.depositId?.toString(),
-            token: event.args.token,
-            amount: event.args.amount?.toString(),
-            yieldToken: event.args.yieldToken,
-            yieldAmount: event.args.yieldAmount?.toString(),
-            intendedRecipient: event.args.intendedRecipient,
+            transactionHash: eventLog.transactionHash,
+            depositor: eventLog.args.depositor,
+            depositId: eventLog.args.depositId?.toString(),
+            token: eventLog.args.token,
+            amount: eventLog.args.amount?.toString(),
+            yieldToken: eventLog.args.yieldToken,
+            yieldAmount: eventLog.args.yieldAmount?.toString(),
+            intendedRecipient: eventLog.args.intendedRecipient,
             timestamp: block?.timestamp || Date.now() / 1000,
           });
         }
@@ -145,17 +147,19 @@ export class RpcService {
 
       // Process Claimed events
       for (const event of claimedEvents) {
-        if (event.args) {
+        // Type guard for EventLog
+        if ('args' in event && event.args) {
+          const eventLog = event as ethers.EventLog;
           const block = await provider.getBlock(event.blockNumber);
           events.push({
             type: 'Claimed',
             blockNumber: event.blockNumber,
-            transactionHash: event.hash,
-            depositor: event.args.depositor,
-            depositId: event.args.depositId?.toString(),
-            recipient: event.args.recipient,
-            yieldToken: event.args.yieldToken,
-            amount: event.args.amount?.toString(),
+            transactionHash: eventLog.transactionHash,
+            depositor: eventLog.args.depositor,
+            depositId: eventLog.args.depositId?.toString(),
+            recipient: eventLog.args.recipient,
+            yieldToken: eventLog.args.yieldToken,
+            amount: eventLog.args.amount?.toString(),
             timestamp: block?.timestamp || Date.now() / 1000,
           });
         }
@@ -163,16 +167,18 @@ export class RpcService {
 
       // Process Recovered events
       for (const event of recoveredEvents) {
-        if (event.args) {
+        // Type guard for EventLog
+        if ('args' in event && event.args) {
+          const eventLog = event as ethers.EventLog;
           const block = await provider.getBlock(event.blockNumber);
           events.push({
             type: 'Recovered',
             blockNumber: event.blockNumber,
-            transactionHash: event.hash,
-            depositor: event.args.depositor,
-            depositId: event.args.depositId?.toString(),
-            yieldToken: event.args.yieldToken,
-            amount: event.args.amount?.toString(),
+            transactionHash: eventLog.transactionHash,
+            depositor: eventLog.args.depositor,
+            depositId: eventLog.args.depositId?.toString(),
+            yieldToken: eventLog.args.yieldToken,
+            amount: eventLog.args.amount?.toString(),
             timestamp: block?.timestamp || Date.now() / 1000,
           });
         }

@@ -35,24 +35,86 @@ export default function VoucherAllocation({
   const [errorMessage, setErrorMessage] = useState<string>("")
   const [progress, setProgress] = useState(0)
 
-  // 计算固定扣除5%和不足缺失部分
-  // 如果提供了 originalAmount，使用新的分配逻辑（固定扣除5%）
+  // 计算固定扣除和不足缺失部分
+  // 如果提供了 originalAmount，使用新的分配逻辑（动态扣除：5% - 已扣除百分比）
   // 否则使用旧的逻辑（直接分配 totalAmount）
   const useNewAllocationLogic = originalAmount !== undefined && originalAmount > 0
   
-  // 计算固定扣除的5%（基于原始总额）
-  const reservedPercent = 0.05 // 固定5%
-  const reservedAmount = useNewAllocationLogic ? originalAmount * reservedPercent : 0
-  const allocatableAmount = useNewAllocationLogic ? originalAmount * (1 - reservedPercent) : totalAmount
-  
-  // 实际手续费金额（链上扣除的0.98%，如果提供了）
+  // 实际手续费金额（如果提供了）
   // 注意：这个手续费会在链上扣除，不作为凭证
   const feeAmount = useNewAllocationLogic && actualFee !== undefined ? actualFee : 0
   
-  // 计算剩余部分 = 5% - 实际手续费（链上扣除后剩余的部分，作为单独凭证，未来人工提取）
+  // 固定基础手续费：1 USDT（固定值，不算在5%里面）
+  const baseFee = 1.0
+  
+  // 计算已扣除的百分比（不包括固定的基础费用）
+  // 已扣除百分比 = (actualFee - baseFee) / originalAmount
+  // 如果 actualFee <= baseFee，则已扣除百分比为 0
+  const deductedPercent = useNewAllocationLogic && actualFee !== undefined && originalAmount > 0
+    ? Math.max(0, (actualFee - baseFee) / originalAmount)
+    : 0
+  
+  // 目标扣除比例：5%
+  const targetReservedPercent = 0.05
+  
+  // 计算实际固定扣除 = 5% - 已扣除百分比（不包括固定的基础费用）
+  // 如果已扣除百分比 >= 5%，则固定扣除为 0
+  const actualReservedPercent = Math.max(0, targetReservedPercent - deductedPercent)
+  const reservedAmount = useNewAllocationLogic ? originalAmount * actualReservedPercent : 0
+  
+  // 可分配金额：直接使用传入的 totalAmount（这是后端计算好的 allocatableAmount）
+  // 注意：totalAmount 是后端计算的可分配金额，它应该已经扣除了所有费用
+  // 但是，固定扣除凭证应该包含在 totalAmount 中，所以：
+  // - 用户凭证可分配金额 = totalAmount - reservedAmount（固定扣除）
+  // - 固定扣除凭证 = reservedAmount
+  // - 总和 = 用户凭证总和 + reservedAmount = totalAmount
+  const allocatableAmount = totalAmount
+  
+  // 用户凭证可分配金额 = 总可分配金额 - 固定扣除凭证
+  // 使用 BigInt 计算，避免 number 类型的精度损失
+  const allocatableAmountWei = parseToWei(allocatableAmount, 18)
+  const reservedAmountWei = useNewAllocationLogic ? parseToWei(reservedAmount, 18) : 0n
+  const userAllocatableAmountWei = useNewAllocationLogic 
+    ? (allocatableAmountWei > reservedAmountWei ? allocatableAmountWei - reservedAmountWei : 0n)
+    : allocatableAmountWei
+  // 转换回 number 用于显示（仅在需要时）
+  const userAllocatableAmount = parseFloat(formatFromWei(userAllocatableAmountWei, 18))
+  
+  // 验证：确保 reservedAmount 不超过 totalAmount
+  // 如果超过，说明计算有问题，需要调整
+  if (useNewAllocationLogic && reservedAmount > allocatableAmount) {
+    console.warn('[VoucherAllocation] 固定扣除金额超过可分配金额，调整固定扣除', {
+      reservedAmount,
+      allocatableAmount,
+      originalAmount,
+      actualFee,
+      deductedPercent,
+      actualReservedPercent,
+    })
+    // 如果固定扣除超过可分配金额，将固定扣除设为可分配金额，用户凭证为0
+    // 这种情况不应该发生，但为了安全起见，我们处理它
+  }
+  
+  // 计算剩余部分 = 实际固定扣除 - 实际手续费（如果固定扣除 > 手续费，剩余部分作为单独凭证，未来人工提取）
+  // 注意：如果已扣除百分比 >= 5%，则 reservedAmount = 0，remainingAmount 也为 0
   const remainingAmount = useNewAllocationLogic && actualFee !== undefined 
     ? Math.max(0, reservedAmount - actualFee) 
     : 0
+  
+  // 调试信息：打印分配计算详情（在 remainingAmount 定义之后）
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development' && useNewAllocationLogic) {
+    console.log('[VoucherAllocation] 分配计算详情:', {
+      totalAmount: allocatableAmount,
+      originalAmount,
+      actualFee,
+      baseFee,
+      deductedPercent: (deductedPercent * 100).toFixed(2) + '%',
+      actualReservedPercent: (actualReservedPercent * 100).toFixed(2) + '%',
+      reservedAmount,
+      userAllocatableAmount,
+      remainingAmount,
+    })
+  }
   
   // 是否显示剩余部分凭证
   const showRemainingVoucher = useNewAllocationLogic && remainingAmount > 0
@@ -65,7 +127,7 @@ export default function VoucherAllocation({
   ]
 
   // 计算平均分配金额（使用精确计算，返回 wei 格式字符串数组）
-  // 新逻辑：固定扣除5%，剩余95%分配给N个凭证，不足缺失部分作为第N+1个凭证
+  // 新逻辑：动态扣除（5% - 已扣除百分比），剩余部分分配给N个凭证，不足缺失部分作为第N+1个凭证
   // 旧逻辑：直接分配 totalAmount 给N个凭证
   const calculateAverageAmounts = (): string[] => {
     if (quantity === 0) return []
@@ -73,24 +135,26 @@ export default function VoucherAllocation({
     const amountsWei: bigint[] = []
     
     if (useNewAllocationLogic) {
-      // 新逻辑：分配 allocatableAmount（95%）给 quantity 个凭证
-      const allocatableWei = parseToWei(allocatableAmount, 18)
+      // 新逻辑：分配 userAllocatableAmount 给 quantity 个凭证，然后添加固定扣除凭证
+      // userAllocatableAmount = totalAmount - reservedAmount（固定扣除）
+      // 直接使用 BigInt 计算，避免精度损失
       const quantityBigInt = BigInt(quantity)
       
       // 计算每个凭证的平均金额（wei）
-      const averageWei = allocatableWei / quantityBigInt
+      const averageWei = quantityBigInt > 0n ? userAllocatableAmountWei / quantityBigInt : 0n
       
       // 前 n-1 个凭证使用平均金额
       for (let i = 0; i < quantity - 1; i++) {
         amountsWei.push(averageWei)
       }
       
-      // 最后一个凭证 = allocatableAmount - 前n-1个凭证的总和（确保精度）
+      // 最后一个用户凭证 = userAllocatableAmount - 前n-1个凭证的总和（确保精度，避免总和超过可分配金额）
       const previousTotalWei = amountsWei.reduce((sum, wei) => sum + wei, 0n)
-      const lastAmountWei = allocatableWei - previousTotalWei
-      amountsWei.push(lastAmountWei)
+      const lastAmountWei = userAllocatableAmountWei - previousTotalWei
+      // 确保最后一个凭证不为负数
+      amountsWei.push(lastAmountWei < 0n ? 0n : lastAmountWei)
       
-      // 添加5%凭证（固定扣除的5%，作为一个凭证）
+      // 添加固定扣除凭证（动态计算：5% - 已扣除百分比，作为一个凭证）
       const reservedWei = parseToWei(reservedAmount, 18)
       amountsWei.push(reservedWei)
       
@@ -113,10 +177,11 @@ export default function VoucherAllocation({
         amountsWei.push(averageWei)
       }
       
-      // 最后一个凭证 = 总数量 - 前n-1个凭证的总和（确保精度）
+      // 最后一个凭证 = 总数量 - 前n-1个凭证的总和（确保精度，避免总和超过可分配金额）
       const previousTotalWei = amountsWei.reduce((sum, wei) => sum + wei, 0n)
       const lastAmountWei = totalWei - previousTotalWei
-      amountsWei.push(lastAmountWei)
+      // 确保最后一个凭证不为负数
+      amountsWei.push(lastAmountWei < 0n ? 0n : lastAmountWei)
     }
     
     // 返回 wei 格式的字符串数组
@@ -150,7 +215,7 @@ export default function VoucherAllocation({
   }
 
   // 生成随机金额（使用精确计算，返回 wei 格式字符串数组）
-  // 新逻辑：固定扣除5%，剩余95%分配给N个凭证，不足缺失部分作为第N+1个凭证
+  // 新逻辑：动态扣除（5% - 已扣除百分比），剩余部分分配给N个凭证，不足缺失部分作为第N+1个凭证
   // 旧逻辑：直接分配 totalAmount 给N个凭证
   const generateRandomAmounts = (): string[] => {
     const amountsWei: bigint[] = []
@@ -161,76 +226,97 @@ export default function VoucherAllocation({
     }
 
     if (useNewAllocationLogic) {
-      // 新逻辑：分配 allocatableAmount（95%）给 quantity 个凭证
-      const allocatableWei = parseToWei(allocatableAmount, 18)
-      let remainingWei = allocatableWei
+      // 新逻辑：分配 userAllocatableAmount 给 quantity 个凭证，然后添加固定扣除凭证
+      // userAllocatableAmount = totalAmount - reservedAmount（固定扣除）
+      // 直接使用 BigInt 计算，避免精度损失
+      // 确保 userAllocatableAmount 不为负数
+      if (userAllocatableAmountWei < 0n) {
+        console.warn('[generateRandomAmounts] userAllocatableAmount 为负数，设为0')
+        return []
+      }
+      let remainingWei = userAllocatableAmountWei
       // 使用时间戳作为种子，确保每次生成都不同
-      const seed = Date.now() + quantity * 1000 + Math.floor(allocatableAmount * 100)
+      const seed = Date.now() + quantity * 1000 + Math.floor(userAllocatableAmount * 100)
 
       // 使用循环生成随机金额
       for (let i = 0; i < quantity; i++) {
         if (i === quantity - 1) {
-          // 最后一个凭证，使用剩余金额（确保总和精确等于 allocatableAmount）
-          amountsWei.push(remainingWei)
+          // 最后一个用户凭证，使用剩余金额（确保总和精确等于 userAllocatableAmount）
+          // 确保 remainingWei 不为负数，并且不超过 userAllocatableAmountWei
+          const lastAmount = remainingWei < 0n ? 0n : (remainingWei > userAllocatableAmountWei ? userAllocatableAmountWei : remainingWei)
+          amountsWei.push(lastAmount)
         } else {
           // 确保每个凭证至少有最小金额（0.0001 USDT = 10^14 wei）
           const minWei = parseToWei(0.0001, 18)
           const maxWei = remainingWei - (BigInt(quantity - i - 1) * minWei)
           
           if (maxWei <= 0n) {
-            // 如果剩余金额不足，使用最小金额
-            amountsWei.push(minWei)
-            remainingWei -= minWei
+            // 如果剩余金额不足，使用最小金额（但不超过剩余金额）
+            const actualAmount = remainingWei < minWei ? (remainingWei > 0n ? remainingWei : 0n) : minWei
+            amountsWei.push(actualAmount)
+            remainingWei -= actualAmount
           } else {
             // 在 minWei 和 maxWei 之间随机（使用 BigInt 计算）
             const rangeWei = maxWei - minWei
             const randomWei = minWei + randomBigInt(rangeWei, seed + i)
-            amountsWei.push(randomWei)
-            remainingWei -= randomWei
+            // 确保 randomWei 不超过 remainingWei
+            const actualRandomWei = randomWei > remainingWei ? remainingWei : randomWei
+            amountsWei.push(actualRandomWei)
+            remainingWei -= actualRandomWei
+            // 确保 remainingWei 不会变成负数
+            if (remainingWei < 0n) {
+              remainingWei = 0n
+            }
           }
         }
       }
       
-      // 添加5%凭证（固定扣除的5%，作为一个凭证）
+      // 添加固定扣除凭证（动态计算：5% - 已扣除百分比，作为一个凭证）
       const reservedWei = parseToWei(reservedAmount, 18)
       amountsWei.push(reservedWei)
       
-      // 添加剩余部分作为最后一个凭证（5% - 链上手续费，未来人工提取）
-      // 注意：手续费（0.98%）会在链上扣除，不作为凭证
+      // 添加剩余部分作为最后一个凭证（固定扣除 - 实际手续费，未来人工提取）
+      // 注意：实际手续费会在链上扣除，不作为凭证
       if (remainingAmount > 0) {
         const remainingWei = parseToWei(remainingAmount, 18)
         amountsWei.push(remainingWei)
       }
     } else {
       // 旧逻辑：直接分配 totalAmount
-      const totalWei = parseToWei(totalAmount, 18)
-      let remainingWei = totalWei
-      // 使用时间戳作为种子，确保每次生成都不同
-      const seed = Date.now() + quantity * 1000 + Math.floor(totalAmount * 100)
+    const totalWei = parseToWei(totalAmount, 18)
+    let remainingWei = totalWei
+    // 使用时间戳作为种子，确保每次生成都不同
+    const seed = Date.now() + quantity * 1000 + Math.floor(totalAmount * 100)
 
-      // 使用循环生成随机金额
-      for (let i = 0; i < quantity; i++) {
-        if (i === quantity - 1) {
-          // 最后一个凭证，使用剩余金额（确保总和精确等于 totalAmount）
-          amountsWei.push(remainingWei)
+    // 使用循环生成随机金额
+    for (let i = 0; i < quantity; i++) {
+      if (i === quantity - 1) {
+        // 最后一个凭证，使用剩余金额（确保总和精确等于 totalAmount）
+        // 确保 remainingWei 不为负数
+        amountsWei.push(remainingWei < 0n ? 0n : remainingWei)
+      } else {
+        // 确保每个凭证至少有最小金额（0.0001 USDT = 10^14 wei）
+        const minWei = parseToWei(0.0001, 18)
+        const maxWei = remainingWei - (BigInt(quantity - i - 1) * minWei)
+        
+        if (maxWei <= 0n) {
+          // 如果剩余金额不足，使用最小金额（但不超过剩余金额）
+          const actualAmount = remainingWei < minWei ? (remainingWei > 0n ? remainingWei : 0n) : minWei
+          amountsWei.push(actualAmount)
+          remainingWei -= actualAmount
         } else {
-          // 确保每个凭证至少有最小金额（0.0001 USDT = 10^14 wei）
-          const minWei = parseToWei(0.0001, 18)
-          const maxWei = remainingWei - (BigInt(quantity - i - 1) * minWei)
-          
-          if (maxWei <= 0n) {
-            // 如果剩余金额不足，使用最小金额
-            amountsWei.push(minWei)
-            remainingWei -= minWei
-          } else {
-            // 在 minWei 和 maxWei 之间随机（使用 BigInt 计算）
-            const rangeWei = maxWei - minWei
-            const randomWei = minWei + randomBigInt(rangeWei, seed + i)
-            amountsWei.push(randomWei)
-            remainingWei -= randomWei
+          // 在 minWei 和 maxWei 之间随机（使用 BigInt 计算）
+          const rangeWei = maxWei - minWei
+          const randomWei = minWei + randomBigInt(rangeWei, seed + i)
+          amountsWei.push(randomWei)
+          remainingWei -= randomWei
+          // 确保 remainingWei 不会变成负数
+          if (remainingWei < 0n) {
+            remainingWei = 0n
           }
         }
       }
+    }
     }
 
     // 返回 wei 格式的字符串数组
@@ -260,16 +346,16 @@ export default function VoucherAllocation({
         // 如果已经有生成的随机金额，使用它们；否则生成新的
         // generateRandomAmounts 已经包含了不足缺失部分（如果使用新逻辑）
         if (useNewAllocationLogic) {
-          // 新逻辑：需要检查长度是否包含5%凭证和剩余部分凭证
-          let expectedLength = quantity + 1 // +1 是5%凭证
+          // 新逻辑：需要检查长度是否包含固定扣除凭证和剩余部分凭证
+          let expectedLength = quantity + 1 // +1 是固定扣除凭证
           if (remainingAmount > 0) expectedLength += 1 // +1 是剩余部分凭证
           if (randomAmountsWei.length === expectedLength) {
             return randomAmountsWei
           }
         } else {
           // 旧逻辑：只检查 quantity
-          if (randomAmountsWei.length === quantity) {
-            return randomAmountsWei
+        if (randomAmountsWei.length === quantity) {
+          return randomAmountsWei
           }
         }
         return generateRandomAmounts()
@@ -277,26 +363,37 @@ export default function VoucherAllocation({
         // 使用循环处理自定义金额
         const customAmountsWei: bigint[] = []
         if (useNewAllocationLogic) {
-          // 新逻辑：分配 allocatableAmount 给 quantity 个凭证，然后添加不足缺失部分
-          const allocatableWei = parseToWei(allocatableAmount, 18)
+          // 新逻辑：分配 userAllocatableAmount 给 quantity 个凭证，然后添加固定扣除凭证
+          // userAllocatableAmount = totalAmount - reservedAmount（固定扣除）
+          // 直接使用 BigInt 计算，避免精度损失
+          let previousTotalWei = 0n
           for (let i = 0; i < quantity; i++) {
             if (i === quantity - 1) {
-              // 最后一个凭证：allocatableAmount - 前n-1个凭证的总和
-              const previousTotalWei = customAmountsWei.reduce((sum, wei) => sum + wei, 0n)
-              const lastAmountWei = allocatableWei - previousTotalWei
-              customAmountsWei.push(lastAmountWei < 0n ? 0n : lastAmountWei) // 确保不为负数
+              // 最后一个用户凭证：userAllocatableAmount - 前n-1个凭证的总和（确保总和不超过可分配金额）
+              const lastAmountWei = userAllocatableAmountWei - previousTotalWei
+              // 确保最后一个凭证不为负数，如果前n-1个凭证总和已超过，设为0
+              customAmountsWei.push(lastAmountWei < 0n ? 0n : lastAmountWei)
             } else {
               const customAmount = customAmounts[i] || '0'
               const customAmountWei = parseToWei(customAmount, 18)
-              customAmountsWei.push(customAmountWei)
+              // 如果当前凭证加上之前的总和已经超过用户可分配金额，限制为剩余金额
+              const remainingWei = userAllocatableAmountWei - previousTotalWei
+              if (customAmountWei > remainingWei) {
+                // 限制为剩余金额，确保总和不超过
+                customAmountsWei.push(remainingWei > 0n ? remainingWei : 0n)
+                previousTotalWei += (remainingWei > 0n ? remainingWei : 0n)
+              } else {
+                customAmountsWei.push(customAmountWei)
+                previousTotalWei += customAmountWei
+              }
             }
           }
-          // 添加5%凭证（固定扣除的5%，作为一个凭证）
+          // 添加固定扣除凭证（动态计算：5% - 已扣除百分比，作为一个凭证）
           const reservedWei = parseToWei(reservedAmount, 18)
           customAmountsWei.push(reservedWei)
           
-          // 添加剩余部分作为最后一个凭证（5% - 链上手续费，未来人工提取）
-          // 注意：手续费（0.98%）会在链上扣除，不作为凭证
+          // 添加剩余部分作为最后一个凭证（固定扣除 - 实际手续费，未来人工提取）
+          // 注意：实际手续费会在链上扣除，不作为凭证
           if (remainingAmount > 0) {
             const remainingWei = parseToWei(remainingAmount, 18)
             customAmountsWei.push(remainingWei)
@@ -304,16 +401,26 @@ export default function VoucherAllocation({
         } else {
           // 旧逻辑：直接分配 totalAmount
           const totalWei = parseToWei(totalAmount, 18)
+          let previousTotalWei = 0n
           for (let i = 0; i < quantity; i++) {
             if (i === quantity - 1) {
-              // 最后一个凭证：总数量 - 前n-1个凭证的总和
-              const previousTotalWei = customAmountsWei.reduce((sum, wei) => sum + wei, 0n)
+              // 最后一个凭证：总数量 - 前n-1个凭证的总和（确保总和不超过可分配金额）
               const lastAmountWei = totalWei - previousTotalWei
-              customAmountsWei.push(lastAmountWei < 0n ? 0n : lastAmountWei) // 确保不为负数
+              // 确保最后一个凭证不为负数，如果前n-1个凭证总和已超过，设为0
+              customAmountsWei.push(lastAmountWei < 0n ? 0n : lastAmountWei)
             } else {
               const customAmount = customAmounts[i] || '0'
               const customAmountWei = parseToWei(customAmount, 18)
-              customAmountsWei.push(customAmountWei)
+              // 如果当前凭证加上之前的总和已经超过可分配金额，限制为剩余金额
+              const remainingWei = totalWei - previousTotalWei
+              if (customAmountWei > remainingWei) {
+                // 限制为剩余金额，确保总和不超过
+                customAmountsWei.push(remainingWei > 0n ? remainingWei : 0n)
+                previousTotalWei += (remainingWei > 0n ? remainingWei : 0n)
+              } else {
+                customAmountsWei.push(customAmountWei)
+                previousTotalWei += customAmountWei
+              }
             }
           }
         }
@@ -366,9 +473,9 @@ export default function VoucherAllocation({
     }
 
     const amountsWei = getAmountsWei()
-    // 新逻辑：验证总金额应该等于 originalAmount（95% + 不足缺失部分 = 100%）
-    // 旧逻辑：验证总金额应该等于 totalAmount
-    const expectedTotal = useNewAllocationLogic && originalAmount ? originalAmount : totalAmount
+    // 验证总金额应该等于 totalAmount（可分配金额）
+    // totalAmount 是后端计算好的可分配金额，包括所有凭证（用户凭证 + 固定扣除凭证 + 剩余部分凭证）
+    const expectedTotal = totalAmount
     const expectedTotalWei = parseToWei(expectedTotal, 18)
     const currentTotalWei = getCurrentTotalWei()
 
@@ -384,12 +491,28 @@ export default function VoucherAllocation({
       const currentTotalReadable = formatFromWei(currentTotalWei, 18)
       const totalReadable = formatFromWei(expectedTotalWei, 18)
       const diffReadable = formatFromWei(diffWei, 18)
-      // 使用 formatAmountForDisplay 格式化显示，避免 parseFloat 精度问题
+      
+      // 调试信息：打印精度误差详情
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+        console.warn('[VoucherAllocation] 检测到精度误差:', {
+          currentTotalWei: currentTotalWei.toString(),
+          expectedTotalWei: expectedTotalWei.toString(),
+          diffWei: diffWei.toString(),
+          currentTotalReadable,
+          totalReadable,
+          diffReadable,
+          'diffWei (wei)': diffWei.toString(),
+          'diffReadable (原始)': diffReadable,
+          'diffReadable (格式化4位)': formatAmountForDisplay(diffReadable, 4),
+        })
+      }
+      
+      // 所有金额统一使用 6 位小数显示
       setWarningMessage(
         t("voucher.insufficientAmountWarning", {
-          currentTotal: formatAmountForDisplay(currentTotalReadable, 4),
-          total: formatAmountForDisplay(totalReadable, 4),
-          remaining: formatAmountForDisplay(diffReadable, 4),
+          currentTotal: formatAmountForDisplay(currentTotalReadable, 6),
+          total: formatAmountForDisplay(totalReadable, 6),
+          remaining: formatAmountForDisplay(diffReadable, 6),
         })
       )
       setShowWarningDialog(true)
@@ -487,55 +610,156 @@ export default function VoucherAllocation({
 
   // 验证金额是否有效（用于按钮状态，使用 BigInt 精确比较）
   const isValidAmounts = () => {
-    if (quantity === 0) return false
+    // 调试信息：打印验证条件
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+      const expectedTotalWei = parseToWei(totalAmount, 18)
+      const currentTotalWei = getCurrentTotalWei()
+      const amountsWei = getAmountsWei()
+      const displayAmounts = amountsWei.map(weiStr => formatFromWei(BigInt(weiStr), 18))
+      
+      console.log('[VoucherAllocation] 验证条件检查:', {
+        '条件1: quantity > 0': quantity > 0,
+        quantity,
+        '条件2: 总金额 <= 可分配金额': currentTotalWei <= expectedTotalWei,
+        currentTotalWei: currentTotalWei.toString(),
+        expectedTotalWei: expectedTotalWei.toString(),
+        currentTotal: formatFromWei(currentTotalWei, 18),
+        expectedTotal: formatFromWei(expectedTotalWei, 18),
+        method,
+        amountsWei: amountsWei.length,
+        displayAmounts,
+        userAllocatableAmount: useNewAllocationLogic ? userAllocatableAmount : undefined,
+        reservedAmount: useNewAllocationLogic ? reservedAmount : undefined,
+        remainingAmount: useNewAllocationLogic ? remainingAmount : undefined,
+      })
+    }
+    
+    if (quantity === 0) {
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+        console.log('[VoucherAllocation] 验证失败：quantity 为 0')
+      }
+      return false
+    }
 
-    // 新逻辑：验证总金额应该等于 originalAmount
-    // 旧逻辑：验证总金额应该等于 totalAmount
-    const expectedTotal = useNewAllocationLogic && originalAmount ? originalAmount : totalAmount
+    // 验证总金额应该等于 totalAmount（可分配金额）
+    // totalAmount 是后端计算好的可分配金额，包括所有凭证（用户凭证 + 固定扣除凭证）
+    const expectedTotal = totalAmount
     const expectedTotalWei = parseToWei(expectedTotal, 18)
     const currentTotalWei = getCurrentTotalWei()
 
     // 如果总金额大于预期总额，按钮失效
     if (currentTotalWei > expectedTotalWei) {
+      // 调试信息：打印验证失败的详细信息
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+        const amountsWei = getAmountsWei()
+        const displayAmounts = amountsWei.map(weiStr => formatFromWei(BigInt(weiStr), 18))
+        console.warn('[VoucherAllocation] 验证失败：总金额超过可分配金额', {
+          currentTotalWei: currentTotalWei.toString(),
+          expectedTotalWei: expectedTotalWei.toString(),
+          currentTotal: formatFromWei(currentTotalWei, 18),
+          expectedTotal: formatFromWei(expectedTotalWei, 18),
+          method,
+          quantity,
+          amountsWei: amountsWei.length,
+          displayAmounts,
+          userAllocatableAmount: useNewAllocationLogic ? userAllocatableAmount : undefined,
+          reservedAmount: useNewAllocationLogic ? reservedAmount : undefined,
+          remainingAmount: useNewAllocationLogic ? remainingAmount : undefined,
+        })
+      }
       return false
     }
 
     // 对于自定义模式，需要额外验证
     if (method === "custom") {
       let totalWei = 0n
-      let allPositive = true
 
       // 使用循环验证自定义金额（使用 BigInt）
-      // 新逻辑：验证前 quantity 个凭证（不包括不足缺失部分）
-      // 旧逻辑：验证前 quantity - 1 个凭证
-      const validationCount = useNewAllocationLogic ? quantity : quantity - 1
+      // 验证前 quantity - 1 个凭证（最后一个会自动调整）
+      // 允许留空（视为0），只要总和不超过可分配金额即可
+      const validationCount = quantity - 1
       for (let i = 0; i < validationCount; i++) {
         const amountStr = customAmounts[i] || '0'
+        // 允许留空，留空时视为0
         if (amountStr === '' || amountStr === '0') {
-          allPositive = false
-          break
+          continue
         }
         const amountWei = parseToWei(amountStr, 18)
+        // 如果输入的值小于等于0，跳过（视为0）
         if (amountWei <= 0n) {
-          allPositive = false
-          break
+          continue
         }
         totalWei += amountWei
       }
 
-      // 检查总和是否超过 allocatableAmount（新逻辑）或 totalAmount（旧逻辑）
-      const maxAmount = useNewAllocationLogic ? allocatableAmount : totalAmount
-      if (totalWei >= parseToWei(maxAmount, 18)) {
+      // 检查前 n-1 个凭证的总和是否超过用户可分配金额（不包括固定扣除）
+      // 如果超过，最后一个凭证会被设为0，但总和仍然会超过，所以这里需要严格检查
+      const maxAmountWei = parseToWei(useNewAllocationLogic ? userAllocatableAmount : totalAmount, 18)
+      if (totalWei >= maxAmountWei) {
+        if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+          console.warn('[VoucherAllocation] 自定义模式验证失败：前 n-1 个凭证总和超过用户可分配金额', {
+            totalWei: totalWei.toString(),
+            maxAmountWei: maxAmountWei.toString(),
+            totalWeiDisplay: formatFromWei(totalWei, 18),
+            maxAmountWeiDisplay: formatFromWei(maxAmountWei, 18),
+            validationCount,
+            customAmounts: customAmounts.slice(0, validationCount),
+            userAllocatableAmount: useNewAllocationLogic ? userAllocatableAmount : undefined,
+          })
+        }
         return false
       }
 
-      return allPositive
+      // 还需要检查实际分配的总和（包括自动调整的最后一个凭证和固定扣除凭证）是否超过
+      // 通过 getCurrentTotalWei 获取实际总和
+      const actualTotalWei = getCurrentTotalWei()
+      const expectedTotalWei = parseToWei(totalAmount, 18)
+      
+      // 实际总和不能超过预期总额（可分配金额）
+      if (actualTotalWei > expectedTotalWei) {
+        if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+          const amountsWei = getAmountsWei()
+          const displayAmounts = amountsWei.map(weiStr => formatFromWei(BigInt(weiStr), 18))
+          console.warn('[VoucherAllocation] 自定义模式验证失败：实际总和超过可分配金额', {
+            actualTotalWei: actualTotalWei.toString(),
+            expectedTotalWei: expectedTotalWei.toString(),
+            actualTotalDisplay: formatFromWei(actualTotalWei, 18),
+            expectedTotalDisplay: formatFromWei(expectedTotalWei, 18),
+            amountsWei: amountsWei.length,
+            displayAmounts,
+            reservedAmount: useNewAllocationLogic ? reservedAmount : undefined,
+            remainingAmount: useNewAllocationLogic ? remainingAmount : undefined,
+          })
+        }
+        return false
+      }
+
+      // 如果前 n-1 个凭证都留空，最后一个凭证会自动使用全部可分配金额，这是允许的
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+        console.log('[VoucherAllocation] 自定义模式验证通过')
+      }
+      return true
     }
 
+    // 所有验证通过
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+      console.log('[VoucherAllocation] 验证通过（非自定义模式）')
+    }
     return true
   }
 
   const displayAmounts = getDisplayAmounts()
+  
+  // 调试信息：打印按钮启用状态
+  const isValid = isValidAmounts()
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    console.log('[VoucherAllocation] 按钮启用状态:', {
+      isValid,
+      quantity,
+      method,
+      '按钮应该': isValid ? '启用' : '禁用',
+    })
+  }
 
   return (
     <div className="px-6 py-2 space-y-6 relative">
@@ -560,7 +784,7 @@ export default function VoucherAllocation({
       <div className="flex justify-between items-center bg-black-2 rounded-lg p-4 border border-black-3">
         <span className="text-black-9">{t("voucher.allocatableTotalAmount")}</span>
         <span className="text-white font-medium">
-          {useNewAllocationLogic ? allocatableAmount.toFixed(3) : totalAmount.toFixed(3)}USDT
+          {totalAmount.toFixed(3)}USDT
         </span>
       </div>
 
@@ -642,7 +866,7 @@ export default function VoucherAllocation({
           <span className="text-white text-xs px-2 py-0.5 border border-black-3 rounded-[6px]">
             {(() => {
               if (!useNewAllocationLogic) return quantity
-              let total = quantity + 1 // +1 是5%凭证
+              let total = quantity + 1 // +1 是固定扣除凭证
               if (remainingAmount > 0) total += 1 // +1 是剩余部分凭证
               return total
             })()}
@@ -652,23 +876,23 @@ export default function VoucherAllocation({
         <div className="space-y-3">
           {Array.from({ length: (() => {
             if (!useNewAllocationLogic) return quantity
-            let total = quantity + 1 // +1 是5%凭证
+            let total = quantity + 1 // +1 是固定扣除凭证
             if (remainingAmount > 0) total += 1 // +1 是剩余部分凭证
             return total
           })() }, (_, index) => {
             // 判断凭证类型
             const userVoucherCount = quantity
-            const isReservedVoucher = useNewAllocationLogic && index === userVoucherCount // 5%凭证
+            const isReservedVoucher = useNewAllocationLogic && index === userVoucherCount // 固定扣除凭证
             const isRemainingVoucher = useNewAllocationLogic && remainingAmount > 0 && index === userVoucherCount + 1 // 剩余部分凭证
             return (
-              <div
-                key={index}
-                className={`border rounded-lg p-4 h-12 flex items-center justify-between transition-all ${
-                  method === "custom"
-                    ? "border-primary bg-black-2/50"
-                    : "border-black-3 bg-transparent"
-                }`}
-              >
+            <div
+              key={index}
+              className={`border rounded-lg p-4 h-12 flex items-center justify-between transition-all ${
+                method === "custom"
+                  ? "border-primary bg-black-2/50"
+                  : "border-black-3 bg-transparent"
+              }`}
+            >
               <div className="flex items-center gap-3">
                 {method === "custom" ? null : (
                   <SvgIcon
@@ -679,7 +903,9 @@ export default function VoucherAllocation({
 
                 <span className="text-white">
                   {isReservedVoucher
-                    ? t("voucher.reservedVoucher") || "固定扣除（5%）"
+                    ? useNewAllocationLogic && originalAmount > 0
+                      ? `固定扣除（${(actualReservedPercent * 100).toFixed(2)}%）`
+                      : (t("voucher.reservedVoucher") || "固定扣除（5%）")
                     : isRemainingVoucher
                     ? t("voucher.remainingVoucher") || "剩余部分（人工提取）"
                     : `${t("voucher.voucher")} ${index + 1}`
@@ -713,14 +939,18 @@ export default function VoucherAllocation({
                 <span className="text-white font-medium">
                   {displayAmounts[index]?.toFixed(4)}USDT
                   {isReservedVoucher && (
-                    <span className="text-xs text-black-9 ml-1">({t("voucher.reserved") || "固定扣除5%"})</span>
+                    <span className="text-xs text-black-9 ml-1">
+                      ({useNewAllocationLogic && originalAmount > 0 
+                        ? `固定扣除${(actualReservedPercent * 100).toFixed(2)}%` 
+                        : (t("voucher.reserved") || "固定扣除5%")})
+                    </span>
                   )}
                   {isRemainingVoucher && (
                     <span className="text-xs text-black-9 ml-1">({t("voucher.remaining") || "剩余部分，人工提取"})</span>
                   )}
                 </span>
               )}
-              </div>
+            </div>
             )
           })}
         </div>

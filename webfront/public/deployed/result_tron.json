@@ -1,0 +1,38 @@
+{
+  "network": "tron",
+  "chainId": "0x2b6653dc",
+  "deployer": "TT7cjMVsRWSqUSRgNqYXpBrjHYexVirfWr",
+  "timestamp": "2026-01-19T14:02:00.000Z",
+  "contracts": {
+    "DepositVault": {
+      "address": "TMTZBdy16AUD3bzL1Go8gLCTdobXuMCDxv",
+      "owner": "TT7cjMVsRWSqUSRgNqYXpBrjHYexVirfWr",
+      "defaultLendingDelegate": "TVEX9FVzztWwnYyFnmVsmZEMin4jiPAsff",
+      "defaultLendingTarget": "TXJgMdjVX5dKiQaUi9QobwNxtSQaFqccvd",
+      "recoveryDelay": "259200",
+      "txid": "da5ae1c90266288d69d1ad164543aa538c311083556b1cae5d77aa74c87b1cd6"
+    },
+    "JustLendDelegate": {
+      "address": "TVEX9FVzztWwnYyFnmVsmZEMin4jiPAsff",
+      "txid": "34b02c4cbb45c269a7997d69336f597d77d4562f568040b68d50d7f56be8c8d7",
+      "note": "reused from previous deployment"
+    }
+  },
+  "configuration": {
+    "defaultJToken": "TXJgMdjVX5dKiQaUi9QobwNxtSQaFqccvd"
+  },
+  "gasUsed": {
+    "JustLendDelegate": {
+      "energy": 593028,
+      "fee_sun": 4617000,
+      "fee_trx": 4.617,
+      "note": "from previous deployment (2026-01-17)"
+    },
+    "DepositVault": {
+      "energy": 2517690,
+      "fee_sun": 17149000,
+      "fee_trx": 17.149
+    },
+    "total_trx": 17.149
+  }
+}

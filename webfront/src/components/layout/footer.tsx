@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import SvgIcon from '@/components/ui/SvgIcon'
 import { useTranslation } from '@/lib/hooks/use-translation'
-type NavItem = 'preprocess' | 'deposit' | 'difi' | 'records'
+type NavItem = 'preprocess' | 'deposit' | 'difi' | 'records' | 'statistics'
 
 export function Footer({ isHidden = false }: { isHidden?: boolean }) {
   const router = useRouter()
@@ -36,6 +36,12 @@ export function Footer({ isHidden = false }: { isHidden?: boolean }) {
       label: t('footer.records'),
       path: '/records',
       icon: '/icons/nav-history-icon.svg',
+    },
+    {
+      id: 'statistics' as NavItem,
+      label: t('footer.statistics') || '统计',
+      path: '/statistics',
+      icon: '/icons/nav-history-icon.svg', // 可以后续替换为专门的统计图标
     },
   ]
 

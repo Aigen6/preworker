@@ -60,8 +60,11 @@ contract DepositVaultTest is Test {
         // Alice 存入 - 测量 gas
         vm.prank(alice);
         uint256 gasBefore = gasleft();
-        uint256 depositId = vault.deposit(address(token), DEPOSIT_AMOUNT, bob);
+        DepositVault.RecipientAllocation[] memory allocations = new DepositVault.RecipientAllocation[](1);
+        allocations[0] = DepositVault.RecipientAllocation({ recipient: bob, amount: DEPOSIT_AMOUNT });
+        uint256[] memory depositIds = vault.deposit(address(token), DEPOSIT_AMOUNT, allocations);
         uint256 gasUsed = gasBefore - gasleft();
+        uint256 depositId = depositIds[0];
         
         console.log("=== deposit() Gas Report ===");
         console.log("Gas used:", gasUsed);
@@ -87,7 +90,10 @@ contract DepositVaultTest is Test {
         token.approve(address(vault), DEPOSIT_AMOUNT);
         
         vm.prank(alice);
-        uint256 depositId = vault.deposit(address(token), DEPOSIT_AMOUNT, bob);
+        DepositVault.RecipientAllocation[] memory allocations = new DepositVault.RecipientAllocation[](1);
+        allocations[0] = DepositVault.RecipientAllocation({ recipient: bob, amount: DEPOSIT_AMOUNT });
+        uint256[] memory depositIds = vault.deposit(address(token), DEPOSIT_AMOUNT, allocations);
+        uint256 depositId = depositIds[0];
         
         assertEq(depositId, 0);
         
@@ -111,20 +117,29 @@ contract DepositVaultTest is Test {
         // 第一次存款
         vm.prank(alice);
         uint256 gasBefore1 = gasleft();
-        uint256 id1 = vault.deposit(address(token), DEPOSIT_AMOUNT, bob);
+        DepositVault.RecipientAllocation[] memory alloc1 = new DepositVault.RecipientAllocation[](1);
+        alloc1[0] = DepositVault.RecipientAllocation({ recipient: bob, amount: DEPOSIT_AMOUNT });
+        uint256[] memory ids1 = vault.deposit(address(token), DEPOSIT_AMOUNT, alloc1);
         uint256 gasUsed1 = gasBefore1 - gasleft();
+        uint256 id1 = ids1[0];
         
         // 第二次存款
         vm.prank(alice);
         uint256 gasBefore2 = gasleft();
-        uint256 id2 = vault.deposit(address(token), DEPOSIT_AMOUNT, bob);
+        DepositVault.RecipientAllocation[] memory alloc2 = new DepositVault.RecipientAllocation[](1);
+        alloc2[0] = DepositVault.RecipientAllocation({ recipient: bob, amount: DEPOSIT_AMOUNT });
+        uint256[] memory ids2 = vault.deposit(address(token), DEPOSIT_AMOUNT, alloc2);
         uint256 gasUsed2 = gasBefore2 - gasleft();
+        uint256 id2 = ids2[0];
         
         // 第三次存款
         vm.prank(alice);
         uint256 gasBefore3 = gasleft();
-        uint256 id3 = vault.deposit(address(token), DEPOSIT_AMOUNT, bob);
+        DepositVault.RecipientAllocation[] memory alloc3 = new DepositVault.RecipientAllocation[](1);
+        alloc3[0] = DepositVault.RecipientAllocation({ recipient: bob, amount: DEPOSIT_AMOUNT });
+        uint256[] memory ids3 = vault.deposit(address(token), DEPOSIT_AMOUNT, alloc3);
         uint256 gasUsed3 = gasBefore3 - gasleft();
+        uint256 id3 = ids3[0];
         
         console.log("=== Multiple Deposits Gas Report ===");
         console.log("1st deposit gas (cold):", gasUsed1);
@@ -145,7 +160,10 @@ contract DepositVaultTest is Test {
         vm.prank(alice);
         token.approve(address(vault), DEPOSIT_AMOUNT);
         vm.prank(alice);
-        uint256 depositId = vault.deposit(address(token), DEPOSIT_AMOUNT, bob);
+        DepositVault.RecipientAllocation[] memory allocations = new DepositVault.RecipientAllocation[](1);
+        allocations[0] = DepositVault.RecipientAllocation({ recipient: bob, amount: DEPOSIT_AMOUNT });
+        uint256[] memory depositIds = vault.deposit(address(token), DEPOSIT_AMOUNT, allocations);
+        uint256 depositId = depositIds[0];
         
         // Bob 领取
         uint256 bobBalanceBefore = yieldToken.balanceOf(bob);
@@ -170,7 +188,10 @@ contract DepositVaultTest is Test {
         vm.prank(alice);
         token.approve(address(vault), DEPOSIT_AMOUNT);
         vm.prank(alice);
-        uint256 depositId = vault.deposit(address(token), DEPOSIT_AMOUNT, bob);
+        DepositVault.RecipientAllocation[] memory allocations = new DepositVault.RecipientAllocation[](1);
+        allocations[0] = DepositVault.RecipientAllocation({ recipient: bob, amount: DEPOSIT_AMOUNT });
+        uint256[] memory depositIds = vault.deposit(address(token), DEPOSIT_AMOUNT, allocations);
+        uint256 depositId = depositIds[0];
         
         // 等待时间锁 (默认 3 天)
         vm.warp(block.timestamp + 3 days + 1);
@@ -197,7 +218,10 @@ contract DepositVaultTest is Test {
         vm.prank(alice);
         token.approve(address(vault), DEPOSIT_AMOUNT);
         vm.prank(alice);
-        uint256 depositId = vault.deposit(address(token), DEPOSIT_AMOUNT, bob);
+        DepositVault.RecipientAllocation[] memory allocations = new DepositVault.RecipientAllocation[](1);
+        allocations[0] = DepositVault.RecipientAllocation({ recipient: bob, amount: DEPOSIT_AMOUNT });
+        uint256[] memory depositIds = vault.deposit(address(token), DEPOSIT_AMOUNT, allocations);
+        uint256 depositId = depositIds[0];
         
         // 尝试立即取回（应该失败）
         vm.prank(alice);
@@ -213,7 +237,10 @@ contract DepositVaultTest is Test {
         vm.prank(alice);
         token.approve(address(vault), DEPOSIT_AMOUNT);
         vm.prank(alice);
-        uint256 depositId = vault.deposit(address(token), DEPOSIT_AMOUNT, bob);
+        DepositVault.RecipientAllocation[] memory allocations = new DepositVault.RecipientAllocation[](1);
+        allocations[0] = DepositVault.RecipientAllocation({ recipient: bob, amount: DEPOSIT_AMOUNT });
+        uint256[] memory depositIds = vault.deposit(address(token), DEPOSIT_AMOUNT, allocations);
+        uint256 depositId = depositIds[0];
         
         // Bob 领取
         vm.prank(bob);
@@ -234,7 +261,10 @@ contract DepositVaultTest is Test {
         vm.prank(alice);
         token.approve(address(vault), DEPOSIT_AMOUNT);
         vm.prank(alice);
-        uint256 depositId = vault.deposit(address(token), DEPOSIT_AMOUNT, bob);
+        DepositVault.RecipientAllocation[] memory allocations = new DepositVault.RecipientAllocation[](1);
+        allocations[0] = DepositVault.RecipientAllocation({ recipient: bob, amount: DEPOSIT_AMOUNT });
+        uint256[] memory depositIds = vault.deposit(address(token), DEPOSIT_AMOUNT, allocations);
+        uint256 depositId = depositIds[0];
         
         // 其他人尝试领取
         address other = address(0x999);

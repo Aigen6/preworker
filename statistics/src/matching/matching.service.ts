@@ -5,7 +5,7 @@ import { DepositVaultEvent } from '../database/entities/deposit-vault-event.enti
 import { MatchingAnalysis } from '../database/entities/matching-analysis.entity';
 import { BackendApiService } from '../backend/backend-api.service';
 import { DepositService } from '../deposit/deposit.service';
-import { BigNumber } from 'ethers';
+// ethers v6 uses bigint instead of BigNumber
 
 /**
  * 匹配分析结果接口
@@ -251,13 +251,13 @@ export class MatchingService {
       })),
     );
 
-    const AMOUNT_TOLERANCE = BigNumber.from('1000000000000000'); // 0.001 ETH/BSC (允许小误差)
+    const AMOUNT_TOLERANCE = BigInt('1000000000000000'); // 0.001 ETH/BSC (允许小误差)
     const TIME_TOLERANCE = 3600 * 24; // 24小时内的匹配
 
     for (const poolEvent of poolWithdraws) {
       if (!poolEvent.amount) continue;
 
-      const poolAmount = BigNumber.from(poolEvent.amount);
+      const poolAmount = BigInt(poolEvent.amount);
       const poolTimestamp = poolEvent.blockTimestamp;
 
       let bestMatch: {
@@ -273,7 +273,7 @@ export class MatchingService {
           backendDeposit.allocatableAmount ||
           backendDeposit.depositAmount ||
           '0';
-        const backendAmount = BigNumber.from(backendAmountStr);
+        const backendAmount = BigInt(backendAmountStr);
 
         // 获取后端存入时间戳
         const backendTimestamp =
@@ -291,8 +291,10 @@ export class MatchingService {
         }
 
         // 金额匹配检查
-        const amountDiff = poolAmount.sub(backendAmount).abs();
-        if (amountDiff.gt(AMOUNT_TOLERANCE)) {
+        const amountDiff = poolAmount > backendAmount 
+          ? poolAmount - backendAmount 
+          : backendAmount - poolAmount;
+        if (amountDiff > AMOUNT_TOLERANCE) {
           continue; // 金额差异太大
         }
 
@@ -305,7 +307,7 @@ export class MatchingService {
 
         // 计算匹配置信度
         let confidence = 100;
-        const amountMatchRatio = amountDiff.mul(100).div(poolAmount).toNumber();
+        const amountMatchRatio = Number((amountDiff * 100n) / poolAmount);
         confidence -= amountMatchRatio; // 金额差异越小，置信度越高
 
         const timeMatchRatio = (timeDiff / TIME_TOLERANCE) * 100;
@@ -325,7 +327,7 @@ export class MatchingService {
 
         if (!bestMatch || confidence > bestMatch.confidence) {
           const reasons: string[] = [];
-          if (amountDiff.eq(0)) {
+          if (amountDiff === 0n) {
             reasons.push('金额完全匹配');
           } else {
             reasons.push(`金额差异: ${amountDiff.toString()}`);

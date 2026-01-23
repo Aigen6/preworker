@@ -46,4 +46,12 @@ contract MockLendingPool {
         
         return amount;
     }
+    
+    /**
+     * @dev 授权 yield token（用于测试）
+     * @notice 允许 spender 从 pool 转 yield token
+     */
+    function approveYieldToken(address spender, uint256 amount) external {
+        yieldToken.approve(spender, amount);
+    }
 }

@@ -12,4 +12,10 @@ export { useWithdrawActions } from './use-withdraw-actions'
 export { useWithdrawRequest, useWithdrawRequestObserver } from './use-withdraw-request'
 export { useDepositActions } from './use-deposit-actions'
 export { useUserAssets, useUserAssetsObserver } from './use-user-assets'
+export {
+  usePoolStatistics,
+  useMatchingAnalysis,
+  useMatchingSummary,
+  useDepositInThisServer,
+} from './use-statistics-query'
 

@@ -8,14 +8,18 @@
     "languageSelection": "言語選択",
     "subtitle": "チェーン上のプライベートバンク",
     "walletConnected": "ウォレット接続済み",
-    "walletAddress": "ウォレットアドレス"
+    "walletAddress": "ウォレットアドレス",
+    "fullyConnected": "ウォレットとバックエンド接続済み",
+    "backendNotConnected": "ウォレット接続済み、バックエンド未接続",
+    "notConnected": "ウォレット未接続"
   },
   "footer": {
     "home": "ホーム",
     "preprocess": "前処理",
     "deposit": "預金",
     "defi": "DeFI出金",
-    "records": "出金履歴"
+    "records": "出金履歴",
+    "statistics": "統計"
   },
   "home": {
     "title": "Next.js テンプレートへようこそ",
@@ -126,6 +130,29 @@
       "allocated": "割り当て済み {total}",
       "unallocated": "未割り当て"
     },
+    "tronGasRental": {
+      "title": "TRON Gas 手数料",
+      "sufficient": "十分",
+      "insufficient": "不足",
+      "energy": "Energy",
+      "bandwidth": "Bandwidth",
+      "needMore": "さらに必要",
+      "tip": "💡 ヒント：Energy/Bandwidthが不足しています。取引により多くのTRXが消費される可能性があります",
+      "tipDetail": "レンタルサービスを通じて事前にEnergy/Bandwidthを取得することをお勧めします。これにより取引コストを30-90%節約できます",
+      "rentButton": "レンタルへ",
+      "rentalServices": "推奨レンタルサービス",
+      "rentalTitle": "Energy/Bandwidthをレンタル",
+      "selectProvider": "プロバイダーを選択",
+      "estimating": "費用を計算中...",
+      "estimatedCost": "推定費用",
+      "estimatedSavings": "推定節約額",
+      "estimateCost": "費用を計算",
+      "confirmRental": "レンタルを確認",
+      "processing": "処理中...",
+      "paymentAmount": "支払い金額",
+      "paymentNote": "確認後、ウォレットでTRX転送を開始して支払いを完了します",
+      "payWithTRX": "TRXで支払う"
+    },
     "status": {
       "idle": "アイドル",
       "pending": "保留中",
@@ -155,7 +182,8 @@
     "riskFeeInfo": "リスクスコアと手数料情報",
     "baseFeeRate": "基本手数料率",
     "riskBasedFee": "リスクベース手数料率",
-    "viewRiskFeeDetails": "詳細を表示"
+    "viewRiskFeeDetails": "詳細を表示",
+    "riskScoreTooHigh": "リスクスコアが高すぎるため、入金操作を実行できません"
   },
   "defi": {
     "title": "シームレスDeFi",

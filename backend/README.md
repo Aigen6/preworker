@@ -292,6 +292,58 @@ For detailed API documentation, see [API_DOCUMENTATION.md](./API_DOCUMENTATION.m
 - `TRUSTED_PROXIES`: (Optional) Comma-separated list of trusted proxy IPs/CIDRs
 - `ASSOCIATE_CODE_IP_WHITELIST`: (Optional) Comma-separated list of IPs allowed to call the address association API
 
+#### Admin Authentication Setup
+
+**For Docker Compose:**
+
+1. Copy the example environment file:
+   ```bash
+   cp env.docker.example .env
+   ```
+
+2. Edit `.env` and set the following required variables:
+   ```bash
+   # Generate a Base32-encoded TOTP secret (32+ characters)
+   ADMIN_TOTP_SECRET=your_base32_encoded_totp_secret_here
+   
+   # Set a strong admin password
+   ADMIN_PASSWORD=your_secure_admin_password_here
+   
+   # Optional but recommended: Set a JWT secret (32+ characters)
+   ADMIN_JWT_SECRET=your_jwt_secret_key_here_at_least_32_chars
+   ```
+
+3. **Generating TOTP Secret:**
+   - Option 1: Use an online Base32 encoder (e.g., https://www.base32encode.com/) to encode a random string
+   - Option 2: Use the Go script: `go run scripts/generate-totp.go` (requires ADMIN_TOTP_SECRET to be set first)
+   - Option 3: Call the API endpoint `POST /admin/generate-totp-secret` (only available when ADMIN_TOTP_SECRET is not set)
+
+4. Start the services:
+   ```bash
+   docker-compose up -d
+   ```
+
+**For Local Development:**
+
+1. Copy the example environment file:
+   ```bash
+   cp env.example .env
+   ```
+
+2. Edit `.env` and configure the same variables as above.
+
+3. Load environment variables before starting the server:
+   ```bash
+   export $(cat .env | xargs)
+   go run cmd/server/main.go
+   ```
+
+**Security Notes:**
+- ⚠️ Never commit `.env` files to version control
+- ⚠️ Use strong, unique passwords in production
+- ⚠️ Generate random secrets using cryptographically secure methods
+- ⚠️ The default JWT secret is insecure and should only be used in development
+
 ### Configuration File Structure
 
 ```yaml

@@ -27,10 +27,13 @@
     "test:bsc": "node script/testDepositVaultBSC.cjs",
     "test:eth": "node script/testDepositVaultETH.cjs",
     "test:tron": "node script/testDepositVaultTRON.cjs",
+    "test:local": "node script/testMultiRecipient.cjs",
     "deploy:adapters": "node script/deployAdapters.cjs",
     "deploy:vault:eth": "node script/deployDepositVaultETH.cjs",
     "deploy:vault:bsc": "node script/deployDepositVaultBSC.cjs",
-    "deploy:vault:tron": "node script/deployDepositVaultTRON.cjs"
+    "deploy:vault:tron": "node script/deployDepositVaultTRON.cjs",
+    "deploy:local": "node script/deployLocal.cjs",
+    "deploy:test": "node script/deployAndTest.cjs"
   },
   "devDependencies": {}
 }

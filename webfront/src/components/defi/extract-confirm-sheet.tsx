@@ -29,6 +29,8 @@ interface ExtractConfirmSheetProps {
   }
   // BottomSheet 是否打开
   isOpen?: boolean
+  // 是否使用自定义地址（手动输入）
+  useCustomAddress?: boolean
 }
 
 // 将 Wei 格式（18位小数）转换为可读格式
@@ -81,6 +83,7 @@ export function ExtractConfirmSheet({
   targetToken,
   quoteParams,
   isOpen = false,
+  useCustomAddress = false,
 }: ExtractConfirmSheetProps) {
   const { t } = useTranslation()
   const [isProcessing, setIsProcessing] = useState(false)
@@ -342,6 +345,34 @@ export function ExtractConfirmSheet({
             chainId={targetChainId ? parseInt(String(targetChainId)) : undefined}
           />
         </div>
+        
+        {/* 手动输入地址时的黄色警告 */}
+        {useCustomAddress && (
+          <div className="mt-3 p-4 bg-yellow-500/20 border border-yellow-500/50 rounded-xl">
+            <div className="flex items-start gap-2">
+              <SvgIcon
+                src="/icons/questionMark.svg"
+                className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5"
+              />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-yellow-500 mb-1">
+                  警告
+                </p>
+                <p className="text-sm text-yellow-400">
+                  请确认接收地址是否正确，如果错误，资产将可能永久丢失。
+                </p>
+                <div className="mt-2 text-xs text-yellow-400/80">
+                  <p className="font-medium">完整地址：</p>
+                  <p className="break-all font-mono">{extractData.recipientAddress}</p>
+                </div>
+                <div className="mt-2 text-xs text-yellow-400/80">
+                  <p className="font-medium">总数量：</p>
+                  <p className="font-mono">{formatAmount(extractData.totalAmount)} USDT</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 实际到账 */}

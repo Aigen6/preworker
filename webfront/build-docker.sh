@@ -19,13 +19,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # 默认配置
-IMAGE_NAME="ploto/enclave-webserver"
+# 默认 Docker 镜像名称: aigen2025/enclave-webserver
+IMAGE_NAME="aigen2025/enclave-webserver"
+# 默认版本标签: v1 (可通过 --version 参数或 VERSION 环境变量覆盖)
 VERSION="${VERSION:-v1}"
 DOCKER_PLATFORM="${DOCKER_PLATFORM:-linux/amd64}"
 PUSH_IMAGE=false
 USE_MIRROR=false
 DOCKERFILE="Dockerfile"
 API_URL=""
+BASE_DOMAIN=""
 NO_CACHE=false
 
 # 解析命令行参数
@@ -43,7 +46,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --tag)
             IMAGE_NAME="$2"
-            echo -e "${YELLOW}💡 镜像名称: $IMAGE_NAME${NC}"
+            echo -e "${YELLOW}💡 镜像标签: $IMAGE_NAME${NC}"
             shift 2
             ;;
         --platform)
@@ -61,31 +64,46 @@ while [[ $# -gt 0 ]]; do
             echo -e "${YELLOW}💡 后端 API URL: $API_URL${NC}"
             shift 2
             ;;
+        --domain)
+            BASE_DOMAIN="$2"
+            echo -e "${YELLOW}💡 基础域名: $BASE_DOMAIN${NC}"
+            shift 2
+            ;;
         --use-mirror)
             USE_MIRROR=true
             DOCKERFILE="Dockerfile.mirror"
             echo -e "${YELLOW}💡 使用国内镜像源${NC}"
             shift
             ;;
+        --no-cache)
+            NO_CACHE=true
+            echo -e "${YELLOW}💡 不使用缓存构建${NC}"
+            shift
+            ;;
         --help)
             echo "用法: $0 [选项]"
             echo "选项:"
             echo "  --version VERSION   设置镜像版本标签 (默认: v1)"
-            echo "  --test              使用测试版本标签 (构建 ploto/enclave-webserver:test)"
-            echo "  --tag TAG           设置完整镜像标签 (默认: ploto/enclave-webserver)"
+            echo "  --test              使用测试版本标签 (构建 aigen2025/enclave-webserver:test)"
+            echo "  --tag TAG           设置完整镜像标签 (默认: aigen2025/enclave-webserver)"
             echo "  --platform PLATFORM 设置目标平台 (默认: linux/amd64)"
             echo "  --api URL           设置后端 API URL (例如: https://backend.enclave-hq.com)"
+            echo "  --domain DOMAIN     设置基础域名，自动生成子域名 (例如: enclave-hq.com)"
+            echo "                      将自动生成: backend.DOMAIN, stats.DOMAIN, energyrent.DOMAIN"
             echo "  --push              构建后推送镜像到仓库"
             echo "  --use-mirror        使用国内镜像源 (解决 Docker Hub 连接问题)"
+            echo "  --no-cache          不使用缓存构建"
             echo "  --help              显示此帮助信息"
             echo ""
             echo "示例:"
-            echo "  $0                                    # 构建 ploto/enclave-webserver:v1"
-            echo "  $0 --version v1                       # 构建 ploto/enclave-webserver:v1"
-            echo "  $0 --test                            # 构建 ploto/enclave-webserver:test"
-            echo "  $0 --version v2.0.0                  # 构建 ploto/enclave-webserver:v2.0.0"
+            echo "  $0                                    # 构建 aigen2025/enclave-webserver:v1"
+            echo "  $0 --version v1                       # 构建 aigen2025/enclave-webserver:v1"
+            echo "  $0 --test                            # 构建 aigen2025/enclave-webserver:test"
+            echo "  $0 --version v2.0.0                  # 构建 aigen2025/enclave-webserver:v2.0.0"
             echo "  $0 --tag myrepo/webserver --version v1 # 构建 myrepo/webserver:v1"
             echo "  $0 --api https://backend.enclave-hq.com # 构建并设置后端 API URL"
+            echo "  $0 --domain enclave-hq.com            # 自动生成三个子域名"
+            echo "  $0 --domain https://enclave-hq.com   # 支持协议前缀"
             echo "  $0 --push                            # 构建并推送镜像"
             echo "  $0 --use-mirror                      # 使用国内镜像源构建"
             exit 0
@@ -100,6 +118,39 @@ done
 
 FULL_IMAGE_TAG="${IMAGE_NAME}:${VERSION}"
 
+# 如果提供了基础域名，自动生成三个子域名
+if [ -n "$BASE_DOMAIN" ]; then
+    # 提取协议和域名
+    PROTOCOL="https"
+    DOMAIN="$BASE_DOMAIN"
+    
+    if [[ "$BASE_DOMAIN" == http://* ]]; then
+        PROTOCOL="http"
+        DOMAIN="${BASE_DOMAIN#http://}"
+    elif [[ "$BASE_DOMAIN" == https://* ]]; then
+        PROTOCOL="https"
+        DOMAIN="${BASE_DOMAIN#https://}"
+    fi
+    
+    # 移除尾部斜杠
+    DOMAIN="${DOMAIN%/}"
+    
+    # 生成三个子域名
+    BACKEND_URL="${PROTOCOL}://backend.${DOMAIN}"
+    STATS_URL="${PROTOCOL}://stats.${DOMAIN}"
+    ENERGYRENT_URL="${PROTOCOL}://energyrent.${DOMAIN}"
+    
+    # 如果同时提供了 --api，则使用 --api 的值，否则使用自动生成的
+    if [ -z "$API_URL" ]; then
+        API_URL="$BACKEND_URL"
+    fi
+    
+    echo -e "${BLUE}📋 自动生成的子域名:${NC}"
+    echo -e "  后端服务: ${BACKEND_URL}"
+    echo -e "  统计服务: ${STATS_URL}"
+    echo -e "  能量租赁: ${ENERGYRENT_URL}"
+fi
+
 echo -e "${BLUE}📋 构建配置:${NC}"
 echo -e "  镜像标签: ${FULL_IMAGE_TAG}"
 echo -e "  目标平台: ${DOCKER_PLATFORM}"
@@ -109,6 +160,10 @@ if [ "$USE_MIRROR" = true ]; then
 fi
 if [ -n "$API_URL" ]; then
     echo -e "  后端 API: ${API_URL}"
+fi
+if [ -n "$BASE_DOMAIN" ]; then
+    echo -e "  统计服务 API: ${STATS_URL}"
+    echo -e "  能量租赁 API: ${ENERGYRENT_URL}"
 fi
 echo ""
 
@@ -156,6 +211,10 @@ if docker buildx version &> /dev/null; then
         "-t" "${FULL_IMAGE_TAG}"
     )
     
+    if [ "$NO_CACHE" = true ]; then
+        BUILD_ARGS+=("--no-cache")
+    fi
+    
     # 如果提供了 API URL，作为构建参数传递
     if [ -n "$API_URL" ]; then
         BUILD_ARGS+=("--build-arg" "NEXT_PUBLIC_API_URL=${API_URL}")
@@ -169,6 +228,14 @@ if docker buildx version &> /dev/null; then
         fi
         BUILD_ARGS+=("--build-arg" "NEXT_PUBLIC_WS_URL=${WS_URL}")
         echo -e "${BLUE}🔗 WebSocket URL: ${WS_URL}${NC}"
+    fi
+    
+    # 如果提供了基础域名，自动设置统计服务和能量租赁服务的 URL
+    if [ -n "$BASE_DOMAIN" ]; then
+        BUILD_ARGS+=("--build-arg" "NEXT_PUBLIC_STATISTICS_API_URL=${STATS_URL}")
+        BUILD_ARGS+=("--build-arg" "NEXT_PUBLIC_ENERGY_RENTAL_API_URL=${ENERGYRENT_URL}")
+        echo -e "${BLUE}📊 统计服务 API: ${STATS_URL}${NC}"
+        echo -e "${BLUE}⚡ 能量租赁 API: ${ENERGYRENT_URL}${NC}"
     fi
     
     if [ "$PUSH_IMAGE" = true ]; then
@@ -191,6 +258,10 @@ else
         "-t" "${FULL_IMAGE_TAG}"
     )
     
+    if [ "$NO_CACHE" = true ]; then
+        BUILD_CMD+=("--no-cache")
+    fi
+    
     # 如果提供了 API URL，作为构建参数传递
     if [ -n "$API_URL" ]; then
         BUILD_CMD+=("--build-arg" "NEXT_PUBLIC_API_URL=${API_URL}")
@@ -204,6 +275,14 @@ else
         fi
         BUILD_CMD+=("--build-arg" "NEXT_PUBLIC_WS_URL=${WS_URL}")
         echo -e "${BLUE}🔗 WebSocket URL: ${WS_URL}${NC}"
+    fi
+    
+    # 如果提供了基础域名，自动设置统计服务和能量租赁服务的 URL
+    if [ -n "$BASE_DOMAIN" ]; then
+        BUILD_CMD+=("--build-arg" "NEXT_PUBLIC_STATISTICS_API_URL=${STATS_URL}")
+        BUILD_CMD+=("--build-arg" "NEXT_PUBLIC_ENERGY_RENTAL_API_URL=${ENERGYRENT_URL}")
+        echo -e "${BLUE}📊 统计服务 API: ${STATS_URL}${NC}"
+        echo -e "${BLUE}⚡ 能量租赁 API: ${ENERGYRENT_URL}${NC}"
     fi
     
     BUILD_CMD+=(".")

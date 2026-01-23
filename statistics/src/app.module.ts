@@ -5,6 +5,7 @@ import { DatabaseModule } from './database/database.module';
 import { StatisticsModule } from './statistics/statistics.module';
 import { MatchingModule } from './matching/matching.module';
 import { DepositModule } from './deposit/deposit.module';
+import { HealthModule } from './health/health.module';
 import { StatisticsScheduler } from './statistics/statistics.scheduler';
 import { ConfigModule } from './config/config.module';
 import configuration from './config/configuration';
@@ -27,6 +28,7 @@ import configuration from './config/configuration';
     StatisticsModule,
     MatchingModule,
     DepositModule,
+    HealthModule,
   ],
   providers: [StatisticsScheduler],
 })

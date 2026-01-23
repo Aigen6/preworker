@@ -25,6 +25,7 @@ import { useRiskFeeInfo } from "@/lib/hooks/use-risk-fee-info"
 import { getUSDTDecimals, parseUSDTAmount } from "@/lib/utils/token-decimals"
 import { parseToWei, formatFromWei, formatAmountForDisplay } from "@/lib/utils/amount-calculator"
 import { AddressRankDisplayer } from "@/components/ui/address-rank-displayer"
+import { TronGasRentalOption } from "@/components/deposit/tron-gas-rental-option"
 
 function DepositPage() {
   const { address, isConnected, chainId } = useWalletConnection()
@@ -1347,12 +1348,44 @@ function DepositPage() {
   }, [processingSheet.isOpen])
 
   const handleAllocateVoucher = (record: DepositRecordData) => {
-    // 使用 record 的 receivableAmount（即 allocatableAmount）和 checkbook ID
-    // 传递 originalAmount 和 feeAmount 用于计算5%和不足缺失部分
+    // 从 checkbooks 中查找对应的 checkbook，使用原始的 allocatable_amount（wei 格式）
+    // 避免使用转换后的 receivableAmount，因为可能有精度损失
+    const checkbook = checkbooks.find((cb: any) => cb.id === record.id)
+    if (!checkbook) {
+      console.error('未找到对应的 checkbook:', record.id)
+      return
+    }
+    
+    // 获取原始的 allocatable_amount（wei 格式）
+    const allocatableAmountWei = checkbook.allocatableAmount || 
+                                 (checkbook as any).allocatable_amount || 
+                                 '0'
+    
+    // 获取原始的 gross_amount（wei 格式）
+    const originalAmountWei = checkbook.depositAmount || 
+                             checkbook.grossAmount || 
+                             (checkbook as any).gross_amount || 
+                             (checkbook as any).amount || 
+                             '0'
+    
+    // 获取原始的手续费（wei 格式）
+    const feeAmountWei = checkbook.feeTotalLocked || 
+                        (checkbook as any).fee_total_locked || 
+                        '0'
+    
+    // 获取 token decimals
+    const rawDecimals = checkbook.token?.decimals ?? 18
+    const decimals = rawDecimals > 0 ? rawDecimals : 18
+    
+    // 转换为可读格式（number）
+    const allocatableAmount = parseFloat(formatFromWei(BigInt(allocatableAmountWei), decimals))
+    const originalAmount = parseFloat(formatFromWei(BigInt(originalAmountWei), decimals))
+    const actualFee = parseFloat(formatFromWei(BigInt(feeAmountWei), decimals))
+    
     voucherSheet.open({ 
-      totalAmount: record.receivableAmount,
-      originalAmount: record.originalAmount,
-      actualFee: record.feeAmount,
+      totalAmount: allocatableAmount, // 使用原始的 allocatable_amount 转换后的值
+      originalAmount: originalAmount,
+      actualFee: actualFee,
       checkbookId: record.id // 传递选中的 checkbook ID
     })
   }
@@ -1753,6 +1786,15 @@ function DepositPage() {
                   : t('deposit.needAuthorize')}
               </p>
             )}
+            
+            {/* TRON Gas 租赁选项 */}
+            <div className="mt-4">
+              <TronGasRentalOption
+                operationType="treasury-deposit"
+                // 不传 onRentClick，使用组件内置的直接租赁功能
+              />
+            </div>
+            
             {/* 风险评分和费率信息 */}
             <div className="mb-4 mt-4 p-4 bg-black-3 rounded-[12px]">
               {isFetchingRiskFee ? (
@@ -2290,7 +2332,7 @@ function DepositPage() {
           {/* 动画图标 */}
           <div className="flex flex-col items-center mb-6">
             <div className="relative mb-6">
-              <SvgIcon src="/icons/loading.svg" />
+              <SvgIcon src="/icons/loading.svg" className="text-primary" />
             </div>
 
             {/* 进度条 */}

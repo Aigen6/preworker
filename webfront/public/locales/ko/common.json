@@ -8,14 +8,18 @@
     "languageSelection": "언어 선택",
     "subtitle": "블록체인상의 프라이빗 뱅크",
     "walletConnected": "지갑 연결됨",
-    "walletAddress": "지갑 주소"
+    "walletAddress": "지갑 주소",
+    "fullyConnected": "지갑 및 백엔드 연결됨",
+    "backendNotConnected": "지갑 연결됨, 백엔드 미연결",
+    "notConnected": "지갑 미연결"
   },
   "footer": {
     "home": "홈",
     "preprocess": "전처리",
     "deposit": "입금",
     "defi": "DeFI 출금",
-    "records": "출금 내역"
+    "records": "출금 내역",
+    "statistics": "통계"
   },
   "home": {
     "title": "Next.js 템플릿에 오신 것을 환영합니다",
@@ -126,6 +130,29 @@
       "allocated": "할당됨 {total}",
       "unallocated": "미할당"
     },
+    "tronGasRental": {
+      "title": "TRON Gas 수수료",
+      "sufficient": "충분함",
+      "insufficient": "부족함",
+      "energy": "Energy",
+      "bandwidth": "Bandwidth",
+      "needMore": "더 필요함",
+      "tip": "💡 팁: Energy/Bandwidth가 부족합니다. 거래 시 더 많은 TRX가 소비될 수 있습니다",
+      "tipDetail": "렌탈 서비스를 통해 사전에 Energy/Bandwidth를 확보하는 것을 권장합니다. 이를 통해 거래 비용을 30-90% 절약할 수 있습니다",
+      "rentButton": "렌탈로 이동",
+      "rentalServices": "추천 렌탈 서비스",
+      "rentalTitle": "Energy/Bandwidth 렌탈",
+      "selectProvider": "공급자 선택",
+      "estimating": "비용 계산 중...",
+      "estimatedCost": "예상 비용",
+      "estimatedSavings": "예상 절약액",
+      "estimateCost": "비용 계산",
+      "confirmRental": "렌탈 확인",
+      "processing": "처리 중...",
+      "paymentAmount": "결제 금액",
+      "paymentNote": "확인 후 지갑에서 TRX 전송을 시작하여 결제를 완료합니다",
+      "payWithTRX": "TRX로 결제"
+    },
     "status": {
       "idle": "유휴",
       "pending": "대기 중",
@@ -155,7 +182,8 @@
     "riskFeeInfo": "위험 점수 및 수수료 정보",
     "baseFeeRate": "기본 수수료율",
     "riskBasedFee": "위험 기반 수수료율",
-    "viewRiskFeeDetails": "세부 정보 보기"
+    "viewRiskFeeDetails": "세부 정보 보기",
+    "riskScoreTooHigh": "위험 점수가 너무 높아 입금 작업을 수행할 수 없습니다"
   },
   "defi": {
     "title": "원활한 DeFi",

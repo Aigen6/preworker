@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EnergyRentalModule } from './energy-rental/energy-rental.module';
+import { HealthModule } from './health/health.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -13,6 +14,7 @@ import configuration from './config/configuration';
     }),
     // 业务模块
     EnergyRentalModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

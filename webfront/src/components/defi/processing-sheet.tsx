@@ -222,7 +222,7 @@ function ProcessingSheetComponent({ onClose, transactionHash, withdrawalId }: Pr
       
       {/* 主要加载动画区域 */}
       <div className="flex-1 flex flex-col items-center mt-16">
-        <SvgIcon src="/icons/loading.svg" />
+        <SvgIcon src="/icons/loading.svg" className="text-primary" />
 
         {/* 进度条 */}
         <div className="w-64 mb-8 mt-6">

@@ -50,7 +50,7 @@ export function TransactionProcessing({
       <div className="flex flex-col items-center mb-4">
         {/* 动画图标 */}
         <div className="relative mb-6">
-          <SvgIcon src="/icons/loading.svg" className="w-[151px] h-[141px]" />
+          <SvgIcon src="/icons/loading.svg" className="w-[151px] h-[141px] text-primary" />
         </div>
 
         {/* 进度条 */}

@@ -32,6 +32,7 @@ import { validateAddressForSlip44, getAddressPlaceholder } from '@/lib/utils/add
 import { InfoTooltip } from '@/components/ui/info-tooltip'
 import { useToast } from '@/components/providers/toast-provider'
 import { parseToWei, formatUSDTAmount } from '@/lib/utils/amount-calculator'
+import { withdrawAddressStore } from '@/lib/config/withdraw-addresses'
 
 // Local type definitions for Intent (not exported from SDK main entry)
 type RawTokenIntent = {
@@ -93,6 +94,82 @@ function DifiPage() {
   const receivingAddress = extractFormStore.receivingAddress
   const isReceivingAddressValid = extractFormStore.isReceivingAddressValid
   const isNetworkSelectorOpen = extractFormStore.isNetworkSelectorOpen
+  const useCustomAddress = extractFormStore.useCustomAddress
+  const selectedAddressId = extractFormStore.selectedAddressId
+
+  // 地址列表相关状态
+  const [addressesLoaded, setAddressesLoaded] = useState(false)
+  const [isAddressListValid, setIsAddressListValid] = useState(false)
+  const [validAddresses, setValidAddresses] = useState<Array<{ chainId: number; id: number; address: string; signature: string; isValid: boolean }>>([])
+
+  // 加载地址列表（组件挂载时）
+  useEffect(() => {
+    const loadAddresses = async () => {
+      try {
+        await withdrawAddressStore.loadAddresses()
+        setAddressesLoaded(true)
+        
+        const allAddresses = withdrawAddressStore.getValidAddresses()
+        const isValid = withdrawAddressStore.getIsValid()
+        setIsAddressListValid(isValid)
+        setValidAddresses(allAddresses)
+        
+        // 如果地址列表为空，默认允许手工输入
+        // 如果地址列表不为空，默认使用地址列表（关闭手工输入开关）
+        if (allAddresses.length === 0) {
+          extractFormStore.setUseCustomAddress(true)
+        } else {
+          extractFormStore.setUseCustomAddress(false)
+        }
+        
+        if (!isValid && allAddresses.length > 0) {
+          const error = withdrawAddressStore.getError()
+          console.error('地址列表验证失败:', error)
+          showWarning(error || '地址列表验证失败，请检查配置')
+        }
+      } catch (error) {
+        console.error('加载地址列表失败:', error)
+        // 加载失败时，也允许手工输入
+        setAddressesLoaded(true) // 即使失败也标记为已加载，避免无限重试
+        setIsAddressListValid(false)
+        setValidAddresses([])
+        extractFormStore.setUseCustomAddress(true)
+      }
+    }
+    
+    loadAddresses()
+  }, [showWarning, showError])
+
+  // 根据选中的网络过滤地址列表
+  const filteredAddresses = useMemo(() => {
+    if (!selectedNetwork) {
+      return validAddresses
+    }
+    const chainId = parseInt(selectedNetwork)
+    return validAddresses.filter((addr) => addr.chainId === chainId)
+  }, [validAddresses, selectedNetwork])
+
+  // 当网络切换时，如果新网络没有对应的地址，自动切换到手工输入模式
+  useEffect(() => {
+    if (selectedNetwork && !useCustomAddress) {
+      const chainId = parseInt(selectedNetwork)
+      const hasAddressForNetwork = filteredAddresses.length > 0
+      if (!hasAddressForNetwork) {
+        extractFormStore.setUseCustomAddress(true)
+      }
+    }
+  }, [selectedNetwork, filteredAddresses.length, useCustomAddress])
+
+  // 当选择地址 ID 时，自动设置 receivingAddress
+  useEffect(() => {
+    if (!useCustomAddress && selectedAddressId !== null) {
+      const address = withdrawAddressStore.getAddressById(selectedAddressId)
+      if (address && address.isValid) {
+        extractFormStore.setReceivingAddress(address.address)
+        extractFormStore.setReceivingAddressValid(true)
+      }
+    }
+  }, [selectedAddressId, useCustomAddress])
 
   // 收益地址输入框的ref
   const receivingAddressInputRef = useRef<HTMLInputElement>(null)
@@ -678,7 +755,10 @@ function DifiPage() {
     console.log('=== 构建完成，打开 BottomSheet ===')
     
     // 将 quoteParams 传递给 BottomSheet
-    extractConfirmSheet.open({ quoteParams })
+    extractConfirmSheet.open({ 
+      quoteParams,
+      useCustomAddress: useCustomAddress // 传递是否使用自定义地址的标志
+    })
   }
 
   const handleExtractSubmit = async () => {
@@ -1495,41 +1575,101 @@ function DifiPage() {
             <h3 className="text-base font-medium text-main mb-3">
               {t('defi.receivingAddress')}
             </h3>
-            <div className="relative">
+            
+            {/* 使用自定义地址开关 */}
+            <div className="mb-3 flex items-center gap-2">
               <input
-                ref={receivingAddressInputRef}
-                type="text"
-                value={receivingAddress}
-                onChange={(e) => extractFormStore.setReceivingAddress(e.target.value)}
-                onFocus={handleReceivingAddressFocus}
-                onBlur={handleReceivingAddressBlur}
-                placeholder={getAddressPlaceholder(selectedNetwork, t)}
-                className={`w-full bg-transparent border rounded-xl px-4 py-3 pr-10 text-white placeholder-black-9 focus:outline-none ${
-                  receivingAddress && selectedNetwork
-                    ? isReceivingAddressValid
-                      ? 'border-primary focus:border-primary'
-                      : 'border-red-500 focus:border-red-500'
-                    : 'border-primary focus:border-primary'
-                }`}
+                type="checkbox"
+                id="useCustomAddress"
+                checked={useCustomAddress}
+                onChange={(e) => {
+                  extractFormStore.setUseCustomAddress(e.target.checked)
+                }}
+                className="w-4 h-4 rounded border-primary bg-transparent text-primary focus:ring-primary focus:ring-offset-0"
               />
-              {receivingAddress && (
-                <button
-                  onClick={() => {
-                    extractFormStore.setReceivingAddress('')
-                    extractFormStore.setReceivingAddressValid(false)
-                  }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 hover:bg-black-3 rounded-[20%] transition-colors"
-                  type="button"
-                >
-                  <SvgIcon
-                    src="/icons/common-close.svg"
-                    className="w-4 h-4 text-black-9"
-                  />
-                </button>
-              )}
+              <label htmlFor="useCustomAddress" className="text-sm text-black-9 cursor-pointer">
+                使用自定义地址
+              </label>
             </div>
+
+            {/* 地址选择/输入 */}
+            {!useCustomAddress && filteredAddresses.length > 0 ? (
+              // 地址列表下拉选择
+              <div className="relative">
+                <select
+                  value={selectedAddressId || ''}
+                  onChange={(e) => {
+                    const addressId = e.target.value ? parseInt(e.target.value) : null
+                    extractFormStore.setSelectedAddressId(addressId)
+                  }}
+                  disabled={!isAddressListValid}
+                  className={`w-full bg-transparent border rounded-xl px-4 py-3 text-white focus:outline-none ${
+                    !isAddressListValid
+                      ? 'border-red-500 opacity-50 cursor-not-allowed'
+                      : selectedAddressId
+                      ? 'border-primary focus:border-primary'
+                      : 'border-primary focus:border-primary'
+                  }`}
+                >
+                  <option value="" className="bg-black-1">
+                    请选择地址
+                  </option>
+                  {filteredAddresses.map((addr) => (
+                    <option key={addr.id} value={addr.id} className="bg-black-1">
+                      #{addr.id}: {addr.address.slice(0, 10)}...{addr.address.slice(-8)}
+                    </option>
+                  ))}
+                </select>
+                {!isAddressListValid && (
+                  <p className="mt-2 text-sm text-red-500">
+                    地址列表验证失败，请检查配置
+                  </p>
+                )}
+                {selectedNetwork && filteredAddresses.length === 0 && (
+                  <p className="mt-2 text-sm text-yellow-500">
+                    当前网络没有可用的地址，请使用自定义地址
+                  </p>
+                )}
+              </div>
+            ) : (
+              // 手动输入地址
+              <div className="relative">
+                <input
+                  ref={receivingAddressInputRef}
+                  type="text"
+                  value={receivingAddress}
+                  onChange={(e) => extractFormStore.setReceivingAddress(e.target.value)}
+                  onFocus={handleReceivingAddressFocus}
+                  onBlur={handleReceivingAddressBlur}
+                  placeholder={getAddressPlaceholder(selectedNetwork, t)}
+                  className={`w-full bg-transparent border rounded-xl px-4 py-3 pr-10 text-white placeholder-black-9 focus:outline-none ${
+                    receivingAddress && selectedNetwork
+                      ? isReceivingAddressValid
+                        ? 'border-primary focus:border-primary'
+                        : 'border-red-500 focus:border-red-500'
+                      : 'border-primary focus:border-primary'
+                  }`}
+                />
+                {receivingAddress && (
+                  <button
+                    onClick={() => {
+                      extractFormStore.setReceivingAddress('')
+                      extractFormStore.setReceivingAddressValid(false)
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 hover:bg-black-3 rounded-[20%] transition-colors"
+                    type="button"
+                  >
+                    <SvgIcon
+                      src="/icons/common-close.svg"
+                      className="w-4 h-4 text-black-9"
+                    />
+                  </button>
+                )}
+              </div>
+            )}
+            
             {/* 地址验证错误提示 */}
-            {receivingAddress && selectedNetwork && !isReceivingAddressValid && (
+            {receivingAddress && selectedNetwork && !isReceivingAddressValid && useCustomAddress && (
               <p className="mt-2 text-sm text-red-500">
                 {t('defi.invalidAddress')} {selectedNetwork === '195' ? 'TRON' : 'EVM'}
               </p>
@@ -1560,9 +1700,23 @@ function DifiPage() {
           <div className="flex flex-col items-center">
             <button
               onClick={() => handleExtractConfirm()}
-              disabled={selectedAllocations.length === 0 || !selectedNetwork || !selectedTargetToken || !receivingAddress || !isReceivingAddressValid || withdrawLoading}
+              disabled={
+                selectedAllocations.length === 0 || 
+                !selectedNetwork || 
+                !selectedTargetToken || 
+                !receivingAddress || 
+                !isReceivingAddressValid || 
+                withdrawLoading ||
+                (!useCustomAddress && filteredAddresses.length > 0 && !isAddressListValid) // 如果使用地址列表但验证失败，禁用按钮
+              }
               className={`w-[230px] h-[50px] bg-primary text-black-2 rounded-[14px] font-bold ${
-                selectedAllocations.length === 0 || !selectedNetwork || !selectedTargetToken || !receivingAddress || !isReceivingAddressValid || withdrawLoading
+                selectedAllocations.length === 0 || 
+                !selectedNetwork || 
+                !selectedTargetToken || 
+                !receivingAddress || 
+                !isReceivingAddressValid || 
+                withdrawLoading ||
+                (!useCustomAddress && !isAddressListValid)
                   ? 'opacity-50 cursor-not-allowed'
                   : ''
               }`}
@@ -1692,6 +1846,7 @@ function DifiPage() {
           targetChain={selectedNetwork ? parseInt(selectedNetwork) : undefined}
           targetToken={selectedTargetToken}
           quoteParams={extractConfirmSheet.data?.quoteParams}
+          useCustomAddress={extractConfirmSheet.data?.useCustomAddress || false}
         />
       </BottomSheet>
 

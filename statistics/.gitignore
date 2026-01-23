@@ -1,7 +1,8 @@
 # Dependencies
 node_modules/
 **/node_modules/
-package-lock.json
+# Note: package-lock.json should be committed for Docker builds
+# package-lock.json
 
 # Build output
 dist/

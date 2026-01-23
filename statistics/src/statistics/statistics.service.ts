@@ -4,7 +4,7 @@ import { Repository, Between } from 'typeorm';
 import { PoolStatistics } from '../database/entities/pool-statistics.entity';
 import { DepositVaultEvent } from '../database/entities/deposit-vault-event.entity';
 import { BackendApiService } from '../backend/backend-api.service';
-import { BigNumber } from 'ethers';
+// ethers v6 uses bigint instead of BigNumber
 import { DeploymentConfigService } from '../config/deployment-config.service';
 
 @Injectable()
@@ -144,36 +144,30 @@ export class StatisticsService {
     hour: number,
   ): Partial<PoolStatistics> {
     let depositCount = 0;
-    let totalDepositAmount = BigNumber.from(0);
+    let totalDepositAmount = 0n;
     let claimCount = 0;
-    let totalClaimAmount = BigNumber.from(0);
+    let totalClaimAmount = 0n;
     let recoverCount = 0;
-    let totalRecoverAmount = BigNumber.from(0);
+    let totalRecoverAmount = 0n;
 
     for (const event of events) {
       switch (event.eventType) {
         case 'Deposited':
           depositCount++;
           if (event.amount) {
-            totalDepositAmount = totalDepositAmount.add(
-              BigNumber.from(event.amount),
-            );
+            totalDepositAmount = totalDepositAmount + BigInt(event.amount);
           }
           break;
         case 'Claimed':
           claimCount++;
           if (event.amount) {
-            totalClaimAmount = totalClaimAmount.add(
-              BigNumber.from(event.amount),
-            );
+            totalClaimAmount = totalClaimAmount + BigInt(event.amount);
           }
           break;
         case 'Recovered':
           recoverCount++;
           if (event.amount) {
-            totalRecoverAmount = totalRecoverAmount.add(
-              BigNumber.from(event.amount),
-            );
+            totalRecoverAmount = totalRecoverAmount + BigInt(event.amount);
           }
           break;
       }
@@ -218,10 +212,10 @@ export class StatisticsService {
     );
     const totalDepositAmount = backendStats.deposits.reduce(
       (sum, stat) => {
-        const amount = BigNumber.from(stat.total_gross_amount || '0');
-        return sum.add(amount);
+        const amount = BigInt(stat.total_gross_amount || '0');
+        return sum + amount;
       },
-      BigNumber.from(0),
+      0n,
     );
 
     const withdrawCount = backendStats.withdraws.reduce(
@@ -230,10 +224,10 @@ export class StatisticsService {
     );
     const totalWithdrawAmount = backendStats.withdraws.reduce(
       (sum, stat) => {
-        const amount = BigNumber.from(stat.total_amount || '0');
-        return sum.add(amount);
+        const amount = BigInt(stat.total_amount || '0');
+        return sum + amount;
       },
-      BigNumber.from(0),
+      0n,
     );
 
     return {

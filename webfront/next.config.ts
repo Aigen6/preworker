@@ -1,10 +1,38 @@
 import type { NextConfig } from "next";
 import path from "path";
 
+// 显式加载环境变量（确保 .env.local 被正确加载）
+// Next.js 会自动加载 .env.local，但有时需要显式配置
+const tronEnergyEnvVars: Record<string, string> = {}
+const envVarKeys = [
+  'NEXT_PUBLIC_TRON_ENERGY_APPROVE_ENERGY',
+  'NEXT_PUBLIC_TRON_ENERGY_APPROVE_BANDWIDTH',
+  'NEXT_PUBLIC_TRON_ENERGY_JUSTLENDING_SUPPLY_ENERGY',
+  'NEXT_PUBLIC_TRON_ENERGY_JUSTLENDING_SUPPLY_BANDWIDTH',
+  'NEXT_PUBLIC_TRON_ENERGY_JUSTLENDING_WITHDRAW_ENERGY',
+  'NEXT_PUBLIC_TRON_ENERGY_JUSTLENDING_WITHDRAW_BANDWIDTH',
+  'NEXT_PUBLIC_TRON_ENERGY_TREASURY_DEPOSIT_ENERGY',
+  'NEXT_PUBLIC_TRON_ENERGY_TREASURY_DEPOSIT_BANDWIDTH',
+  'NEXT_PUBLIC_TRON_ENERGY_DEFAULT_ENERGY',
+  'NEXT_PUBLIC_TRON_ENERGY_DEFAULT_BANDWIDTH',
+]
+
+// 从 process.env 读取环境变量（Next.js 已经加载了 .env.local）
+envVarKeys.forEach(key => {
+  if (process.env[key]) {
+    tronEnergyEnvVars[key] = process.env[key]
+  }
+})
+
 const nextConfig: NextConfig = {
   output: 'standalone',
   typescript: {
     ignoreBuildErrors: true,
+  },
+  
+  // 显式配置环境变量，确保它们被注入到客户端代码
+  env: {
+    ...tronEnergyEnvVars,
   },
   
   // 允许开发环境的跨域请求
@@ -13,6 +41,24 @@ const nextConfig: NextConfig = {
     'wallet.enclave-hq.com',
     'localhost',
   ],
+  
+  // API 代理：将 /api/energy-rental/* 代理到后端服务
+  async rewrites() {
+    const energyRentalApiUrl = process.env.NEXT_PUBLIC_ENERGY_RENTAL_API_URL || 'http://localhost:4001';
+    
+    // 如果配置了后端服务 URL，且不是相对路径，则使用代理
+    // 如果使用相对路径（空字符串或 /），则直接使用 Next.js API 路由
+    if (energyRentalApiUrl && !energyRentalApiUrl.startsWith('/') && energyRentalApiUrl !== '') {
+      return [
+        {
+          source: '/api/energy-rental/:path*',
+          destination: `${energyRentalApiUrl}/api/energy-rental/:path*`,
+        },
+      ];
+    }
+    
+    return [];
+  },
   
   webpack: (config, { isServer }) => {
     const webpack = require('webpack');

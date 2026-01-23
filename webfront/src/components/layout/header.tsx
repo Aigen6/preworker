@@ -354,24 +354,37 @@ function HeaderComponent() {
         <button
           type="button"
           onClick={handleWalletClick}
-          className={`relative w-[38px] h-[38px] rounded-[20%] flex items-center justify-center ${
-            isBackendAuthenticated 
-              ? 'bg-primary' 
+          className={`relative w-[38px] h-[38px] rounded-[20%] flex items-center justify-center bg-transparent ${
+            isWalletConnected && isBackendAuthenticated 
+              ? 'border-2 border-primary'  // 钱包和后端都已连接：绿色
               : isWalletConnected 
-              ? 'bg-primary border-2 border-primary' 
-              : 'bg-black-3 border-2 border-primary'
+              ? 'border-2 border-yellow-500'  // 只有钱包连接，后端未连接：黄色
+              : 'border-2 border-black-2'  // 都未连接：灰色
           }`}
+          title={
+            isWalletConnected && isBackendAuthenticated
+              ? t('header.fullyConnected')
+              : isWalletConnected
+              ? t('header.backendNotConnected')
+              : t('header.notConnected')
+          }
         >
           <SvgIcon
             src="/icons/home-wallet.svg"
-            className="w-[17.01px] h-[17.01px] text-primary"
+            className={`w-[17.01px] h-[17.01px] ${
+              isWalletConnected && isBackendAuthenticated
+                ? 'text-primary'
+                : isWalletConnected
+                ? 'text-yellow-500'
+                : 'text-primary'
+            }`}
             monochrome={true}
           />
           {/* 钱包连接状态指示器 - 显示当前链图标 */}
           {isWalletConnected && chainIcon && (
             <div className="absolute -bottom-0.5 -right-0.5">
               <div
-                className="w-[20px] h-[20px] rounded-[20%] border border-black flex items-center justify-center bg-white overflow-hidden"
+                className="w-[20px] h-[20px] rounded-[20%] border border-black flex items-center justify-center bg-transparent overflow-hidden"
                 title={t('header.walletConnected')}
               >
                 <SvgIcon
@@ -408,7 +421,7 @@ function HeaderComponent() {
           {/* 链图标（仅显示图标，不显示文字） */}
           {chainIcon && (
             <div className="flex items-center shrink-0" data-chain-icon>
-              <div className="w-4 h-4 flex items-center justify-center">
+              <div className="w-4 h-4 flex items-center justify-center bg-transparent">
                 <SvgIcon
                   src={chainIcon}
                   className="w-full h-full"

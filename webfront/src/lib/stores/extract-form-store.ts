@@ -23,6 +23,13 @@ class ExtractFormStore {
   // 网络选择器打开状态
   isNetworkSelectorOpen: boolean = false
 
+  // 是否使用自定义地址（手动输入）
+  // 默认值：如果地址列表为空，默认为 true（允许手工输入）
+  useCustomAddress: boolean = true
+
+  // 选中的地址 ID（从地址列表中选择）
+  selectedAddressId: number | null = null
+
   constructor() {
     makeAutoObservable(this)
     this.loadFromLocalStorage()
@@ -56,6 +63,25 @@ class ExtractFormStore {
     this.isNetworkSelectorOpen = open
   }
 
+  setUseCustomAddress(useCustom: boolean) {
+    this.useCustomAddress = useCustom
+    // 切换模式时清空地址
+    if (useCustom) {
+      this.selectedAddressId = null
+    } else {
+      this.receivingAddress = ''
+      this.isReceivingAddressValid = false
+    }
+  }
+
+  setSelectedAddressId(addressId: number | null) {
+    this.selectedAddressId = addressId
+    // 选择地址时，自动设置 receivingAddress
+    if (addressId !== null) {
+      // 这个会在外部设置，因为需要从地址列表获取地址
+    }
+  }
+
   // 重置所有状态
   reset() {
     this.selectedNetwork = ''
@@ -64,6 +90,8 @@ class ExtractFormStore {
     this.receivingAddress = ''
     this.isReceivingAddressValid = false
     this.isNetworkSelectorOpen = false
+    this.useCustomAddress = false
+    this.selectedAddressId = null
     this.saveToLocalStorage()
   }
 

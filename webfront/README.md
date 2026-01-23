@@ -35,6 +35,113 @@ npm run build
 npm start
 ```
 
+## 🐳 Docker 构建
+
+### 使用 build-docker.sh 脚本
+
+项目提供了统一的 Docker 构建脚本 `build-docker.sh`，支持多种配置选项。
+
+#### 基本用法
+
+```bash
+# 使用默认配置构建
+./build-docker.sh
+
+# 构建并推送镜像
+./build-docker.sh --push
+
+# 指定版本标签
+./build-docker.sh --version v2.0.0
+
+# 使用测试标签
+./build-docker.sh --test
+```
+
+#### 配置后端服务 URL
+
+##### 方式 1: 使用基础域名自动生成（推荐）
+
+通过 `--domain` 参数配置基础域名，脚本会自动生成三个子域名：
+
+```bash
+# 自动生成三个子域名
+./build-docker.sh --domain enclave-hq.com --push
+
+# 将自动生成:
+# - https://backend.enclave-hq.com  → NEXT_PUBLIC_API_URL
+# - https://stats.enclave-hq.com    → NEXT_PUBLIC_STATISTICS_API_URL
+# - https://energyrent.enclave-hq.com → NEXT_PUBLIC_ENERGY_RENTAL_API_URL
+```
+
+**支持的协议：**
+- 默认使用 `https` 协议
+- 支持 `http://` 前缀：`./build-docker.sh --domain http://enclave-hq.com`
+- 支持 `https://` 前缀：`./build-docker.sh --domain https://enclave-hq.com`
+
+##### 方式 2: 手动指定后端 API URL
+
+```bash
+# 使用 --api 参数指定完整 URL
+./build-docker.sh --api https://backend.enclave-hq.com --push
+```
+
+**注意：** 如果同时使用 `--api` 和 `--domain`，`--api` 的值会优先作为后端 URL，统计和能量租赁服务仍使用自动生成的子域名。
+
+#### 完整参数说明
+
+```bash
+./build-docker.sh [选项]
+
+选项:
+  --version VERSION   设置镜像版本标签 (默认: v1)
+  --test              使用测试版本标签 (构建 aigen2025/enclave-webserver:test)
+  --tag TAG           设置完整镜像标签 (默认: aigen2025/enclave-webserver)
+  --platform PLATFORM 设置目标平台 (默认: linux/amd64)
+  --api URL           设置后端 API URL (例如: https://backend.enclave-hq.com)
+  --domain DOMAIN     设置基础域名，自动生成子域名 (例如: enclave-hq.com)
+                      将自动生成: backend.DOMAIN, stats.DOMAIN, energyrent.DOMAIN
+  --push              构建后推送镜像到仓库
+  --use-mirror        使用国内镜像源 (解决 Docker Hub 连接问题)
+  --no-cache          不使用缓存构建
+  --help              显示此帮助信息
+```
+
+#### 使用示例
+
+```bash
+# 示例 1: 使用基础域名自动生成所有服务 URL
+./build-docker.sh --domain enclave-hq.com --push
+
+# 示例 2: 使用 http 协议
+./build-docker.sh --domain http://enclave-hq.com --push
+
+# 示例 3: 自定义后端 URL，其他服务使用自动生成
+./build-docker.sh --api https://custom-backend.example.com --domain enclave-hq.com --push
+
+# 示例 4: 构建测试版本
+./build-docker.sh --domain enclave-hq.com --test --push
+
+# 示例 5: 使用国内镜像源构建
+./build-docker.sh --domain enclave-hq.com --use-mirror --push
+```
+
+#### 环境变量配置
+
+构建时会自动设置以下环境变量到 Docker 镜像中：
+
+- `NEXT_PUBLIC_API_URL` - 主后端服务 URL
+- `NEXT_PUBLIC_WS_URL` - WebSocket URL（从 API URL 自动推导）
+- `NEXT_PUBLIC_STATISTICS_API_URL` - 统计服务 URL（使用 `--domain` 时自动生成）
+- `NEXT_PUBLIC_ENERGY_RENTAL_API_URL` - 能量租赁服务 URL（使用 `--domain` 时自动生成）
+
+这些环境变量会在构建时嵌入到客户端代码中，无需在运行时配置。
+
+#### 默认镜像配置
+
+- **镜像名称**: `aigen2025/enclave-webserver`
+- **默认版本**: `v1`
+- **默认平台**: `linux/amd64`
+
 ## 📁 项目结构
 
 ```

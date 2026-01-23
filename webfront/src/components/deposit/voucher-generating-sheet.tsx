@@ -107,7 +107,7 @@ export function VoucherGeneratingSheet({
 
       {/* 主要加载动画区域 */}
       <div className="flex flex-col items-center mt-16">
-        <SvgIcon src="/icons/loading.svg" />
+        <SvgIcon src="/icons/loading.svg" className="text-primary" />
 
         {/* 进度条 */}
         <div className="w-64 mb-8 mt-6">
@@ -127,8 +127,8 @@ export function VoucherGeneratingSheet({
         {/* 错误信息 */}
         {status === "error" && errorMessage && (
           <div className="w-full max-w-xs mb-4">
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-              <p className="text-xs text-red-400 break-all">{errorMessage}</p>
+            <div className="p-3 bg-danger/10 border border-danger/20 rounded-lg">
+              <p className="text-xs text-danger break-all">{errorMessage}</p>
             </div>
           </div>
         )}

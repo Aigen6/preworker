@@ -1,18 +1,18 @@
 {
   "network": "bsc",
   "chainId": "56",
-  "deployer": "0x9F537216EE9AC756DfD4b117B74870C8AcAaFE63",
-  "timestamp": "2026-01-14T15:40:08.858Z",
+  "deployer": "0xdf9a6C1607fE256053ed0DAa62A3d25D0C7F3A2c",
+  "timestamp": "2026-01-19T12:48:33.567Z",
   "contracts": {
     "DepositVault": {
-      "address": "0x9d67d8220d0865AAd487A9ADaCA4e7E30F28B1aC",
-      "owner": "0x9F537216EE9AC756DfD4b117B74870C8AcAaFE63",
-      "defaultLendingDelegate": "0x4CC5AD9Fe7BD30D03bb062d83D11D778118bAc59",
+      "address": "0x339c124657A596D07df326ff0dA186453717763B",
+      "owner": "0xdf9a6C1607fE256053ed0DAa62A3d25D0C7F3A2c",
+      "defaultLendingDelegate": "0x3557f453C2fBF23287100e17BBeE927C06494170",
       "defaultLendingTarget": "0x6807dc923806fE8Fd134338EABCA509979a7e0cB",
       "recoveryDelay": "259200"
     },
     "AAVEv3Delegate": {
-      "address": "0x4CC5AD9Fe7BD30D03bb062d83D11D778118bAc59"
+      "address": "0x3557f453C2fBF23287100e17BBeE927C06494170"
     }
   },
   "configuration": {

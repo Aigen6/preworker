@@ -1,0 +1,14 @@
+[
+  {
+    "chainId": 60,
+    "id": 1,
+    "address": "0x742d35Cc6074C4532895c05b22629ce5b3c28da4",
+    "signature": "0x..."
+  },
+  {
+    "chainId": 195,
+    "id": 2,
+    "address": "TYourExampleAddressHere",
+    "signature": "0x..."
+  }
+]

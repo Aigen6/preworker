@@ -27,12 +27,16 @@ WORKDIR /app
 # Install production dependencies only
 COPY package.json package-lock.json* ./
 RUN npm config set registry https://registry.npmmirror.com && \
-    npm ci --production=true && \
+    if [ -f package-lock.json ]; then \
+        npm ci --omit=dev; \
+    else \
+        npm install --omit=dev; \
+    fi && \
     npm cache clean --force
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
+# Note: We install production dependencies above, so we don't copy node_modules from builder
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \

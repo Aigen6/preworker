@@ -91,6 +91,50 @@ func (s *WithdrawRequestService) SetProofGenerationService(service *ProofGenerat
 	s.proofGenerationService = service
 }
 
+// updateChecksStatusOnFailure 在提交失败时更新关联的 Check 状态
+func (s *WithdrawRequestService) updateChecksStatusOnFailure(ctx context.Context, requestID string, executeStatus models.ExecuteStatus) error {
+	// 获取与 WithdrawRequest 关联的所有 Check IDs
+	allocations, err := s.allocationRepo.FindByWithdrawRequest(ctx, requestID)
+	if err != nil {
+		return fmt.Errorf("failed to find allocations for withdraw request %s: %w", requestID, err)
+	}
+
+	if len(allocations) == 0 {
+		log.Printf("⚠️ [updateChecksStatusOnFailure] No allocations found for WithdrawRequest ID=%s", requestID)
+		return nil
+	}
+
+	checkIDs := make([]string, 0, len(allocations))
+	for _, alloc := range allocations {
+		checkIDs = append(checkIDs, alloc.ID)
+	}
+
+	log.Printf("🔄 [updateChecksStatusOnFailure] Updating %d checks for WithdrawRequest ID=%s, ExecuteStatus=%s", len(checkIDs), requestID, executeStatus)
+
+	// 根据 executeStatus 决定 Check 的状态
+	switch executeStatus {
+	case models.ExecuteStatusVerifyFailed:
+		// verify_failed：Proof 无效或 nullifier 已使用，不可重试，Check 回退到 idle
+		log.Printf("🔄 [updateChecksStatusOnFailure] ExecuteStatus=verify_failed, releasing Checks back to idle status")
+		// 使用 ReleaseAllocations 方法，它会同时更新状态为 idle 并清除 withdraw_request_id 关联
+		if err := s.allocationRepo.ReleaseAllocations(ctx, checkIDs); err != nil {
+			return fmt.Errorf("failed to release allocations: %w", err)
+		}
+		log.Printf("✅ [updateChecksStatusOnFailure] Released %d checks back to idle status", len(checkIDs))
+
+	case models.ExecuteStatusSubmitFailed:
+		// submit_failed：网络/RPC 错误，可以重试
+		// 根据业务需求，保持 pending 状态（可以重试）
+		log.Printf("ℹ️ [updateChecksStatusOnFailure] ExecuteStatus=submit_failed, Checks remain in pending status (can retry)")
+		// 不更新状态，保持 pending，允许重试
+
+	default:
+		log.Printf("ℹ️ [updateChecksStatusOnFailure] ExecuteStatus=%s, no Check status update needed", executeStatus)
+	}
+
+	return nil
+}
+
 // CreateWithdrawRequestInput input for creating a withdraw request
 type CreateWithdrawRequestInput struct {
 	AllocationIDs []string      // Allocation UUIDs
@@ -1031,12 +1075,22 @@ func (s *WithdrawRequestService) ExecuteWithdraw(ctx context.Context, requestID 
 			if updateErr := s.withdrawRepo.UpdateExecuteStatus(ctx, requestID, models.ExecuteStatusVerifyFailed, "", nil, errorMsg); updateErr != nil {
 				log.Printf("❌ [ExecuteWithdraw] Failed to update status to verify_failed: %v", updateErr)
 			}
+			// 立即更新关联的 Check 状态为 idle（释放 allocations，因为验证失败不可重试）
+			if updateErr := s.updateChecksStatusOnFailure(ctx, requestID, models.ExecuteStatusVerifyFailed); updateErr != nil {
+				log.Printf("⚠️ [ExecuteWithdraw] Failed to update checks status: %v", updateErr)
+			}
 			return fmt.Errorf("verification failed (contract revert): %w", err)
 		} else {
 			// Network/RPC error - can retry
 			log.Printf("⚠️ [ExecuteWithdraw] Network/RPC error (can retry): %v", err)
 			if updateErr := s.withdrawRepo.UpdateExecuteStatus(ctx, requestID, models.ExecuteStatusSubmitFailed, "", nil, errorMsg); updateErr != nil {
 				log.Printf("❌ [ExecuteWithdraw] Failed to update status to submit_failed: %v", updateErr)
+			}
+			// 立即更新关联的 Check 状态（提交失败，但可以重试，保持 pending 或标记为失败）
+			// 根据业务逻辑，submit_failed 可以重试，所以保持 pending 状态
+			// 但如果需要明确标记失败，可以更新 Check 状态
+			if updateErr := s.updateChecksStatusOnFailure(ctx, requestID, models.ExecuteStatusSubmitFailed); updateErr != nil {
+				log.Printf("⚠️ [ExecuteWithdraw] Failed to update checks status: %v", updateErr)
 			}
 			return fmt.Errorf("submit failed (network error): %w", err)
 		}

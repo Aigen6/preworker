@@ -9,8 +9,14 @@ services:
     container_name: zkpay-backend
     ports:
       - "3001:3001"
+    env_file:
+      - .env  # 从 .env 文件加载环境变量
     environment:
       - CONFIG_FILE=/app/config.backend.yaml
+      # 管理员认证配置（如果 .env 文件中没有设置，可以使用以下默认值，但不推荐用于生产环境）
+      # - ADMIN_TOTP_SECRET=${ADMIN_TOTP_SECRET:-}
+      # - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      # - ADMIN_JWT_SECRET=${ADMIN_JWT_SECRET:-}
     volumes:
       - ./config.docker.yaml:/app/config.backend.yaml:ro
       - ./logs:/root/logs

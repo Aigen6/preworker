@@ -10,17 +10,23 @@ import { DepositInThisServer } from './entities/deposit-in-this-server.entity';
   imports: [
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        host: configService.get<string>('database.host'),
-        port: configService.get<number>('database.port'),
-        username: configService.get<string>('database.username'),
-        password: configService.get<string>('database.password'),
-        database: configService.get<string>('database.database'),
-        entities: [PoolStatistics, DepositVaultEvent, MatchingAnalysis, DepositInThisServer],
-        synchronize: process.env.NODE_ENV !== 'production', // Auto-sync schema in dev
-        logging: process.env.NODE_ENV === 'development',
-      }),
+      useFactory: (configService: ConfigService) => {
+        const password = configService.get<string>('database.password');
+        // 确保密码始终是字符串类型，如果未设置则使用空字符串
+        const dbPassword = password !== undefined && password !== null ? String(password) : '';
+        
+        return {
+          type: 'postgres',
+          host: configService.get<string>('database.host'),
+          port: configService.get<number>('database.port'),
+          username: configService.get<string>('database.username'),
+          password: dbPassword,
+          database: configService.get<string>('database.database'),
+          entities: [PoolStatistics, DepositVaultEvent, MatchingAnalysis, DepositInThisServer],
+          synchronize: process.env.NODE_ENV !== 'production', // Auto-sync schema in dev
+          logging: process.env.NODE_ENV === 'development',
+        };
+      },
       inject: [ConfigService],
     }),
     TypeOrmModule.forFeature([PoolStatistics, DepositVaultEvent, MatchingAnalysis, DepositInThisServer]),

@@ -71,6 +71,34 @@ contract DepositVault is Ownable, ReentrancyGuard {
     mapping(address => EmergencyWithdrawRequest) public emergencyWithdrawRequests;
     
     /**
+     * @dev Recipient分配结构体
+     * @param recipient 接收地址
+     * @param amount 分配数量
+     */
+    struct RecipientAllocation {
+        address recipient;
+        uint256 amount;
+    }
+    
+    /**
+     * @dev 可提取存款信息（简化版，保护隐私）
+     * @param depositId 存款ID
+     * @param yieldAmount yield token数量
+     * @param yieldToken yield token地址
+     * @param token 底层代币地址
+     * @param depositor 存入者地址（仅当查询者是recipient时返回，否则为address(0)）
+     * @param depositTime 存入时间（仅当查询者是recipient时返回，否则为0）
+     */
+    struct ClaimableDepositInfo {
+        uint256 depositId;
+        uint96 yieldAmount;
+        address yieldToken;
+        address token;
+        address depositor;      // 仅当 msg.sender == intendedRecipient 时返回
+        uint40 depositTime;     // 仅当 msg.sender == intendedRecipient 时返回
+    }
+    
+    /**
      * @dev 存款信息结构体（优化存储布局，从 7 slot 压缩到 4 slot）
      * @notice 字段顺序经过精心安排以实现最优的 storage packing
      * 
@@ -104,13 +132,13 @@ contract DepositVault is Ownable, ReentrancyGuard {
         uint256 amount,
         address yieldToken,
         uint256 yieldAmount,
-        address intendedRecipient
+        bytes32 recipientHash
     );
     
     event Claimed(
         address indexed depositor,
         uint256 indexed depositId,
-        address indexed recipient,
+        bytes32 indexed recipientHash,
         address yieldToken,
         uint256 amount
     );
@@ -164,6 +192,8 @@ contract DepositVault is Ownable, ReentrancyGuard {
     error InvalidDelegate(); // 无效的适配器地址
     error InvalidLendingTarget(); // 无效的借贷池地址
     error DepositIdNotFoundInList(); // 存款ID不在列表中（状态不一致）
+    error InvalidRecipients(); // 无效的recipients数组
+    error AmountMismatch(); // 数量不匹配（总数量与分配数量不一致）
     
     // 适配器白名单（可选，如果启用，只允许白名单中的适配器）
     mapping(address => bool) public delegateWhitelist;
@@ -183,20 +213,31 @@ contract DepositVault is Ownable, ReentrancyGuard {
     }
     
     /**
-     * @dev 地址A存入借贷池，凭证代币托管在合约中
-     * @param token 底层代币地址
-     * @param amount 存入金额
-     * @param intendedRecipient 预期的接收地址B（中转地址，必须指定）
-     * @return depositId 存款ID
+     * @dev 地址A存入借贷池，凭证代币托管在合约中（存入USDT，自动换成jUSDT）
+     * @param token 底层代币地址（USDT）
+     * @param amount 存入金额（总金额，必须等于所有allocations的amount之和）
+     * @param allocations Recipient分配数组，每个元素包含recipient地址和对应的数量
+     * @return depositIds 存款ID数组（每个recipient对应一个depositId）
      */
     function deposit(
         address token,
         uint256 amount,
-        address intendedRecipient
-    ) external nonReentrant returns (uint256 depositId) {
+        RecipientAllocation[] calldata allocations
+    ) external nonReentrant returns (uint256[] memory depositIds) {
         if (token == address(0)) revert InvalidAddress();
         if (amount == 0) revert InvalidAmount();
-        if (intendedRecipient == address(0)) revert InvalidAddress();
+        if (allocations.length == 0) revert InvalidRecipients();
+        
+        // 验证总数量是否匹配
+        uint256 totalAmount = 0;
+        uint256 allocationsLength = allocations.length;
+        for (uint256 i = 0; i < allocationsLength; i++) {
+            RecipientAllocation memory allocation = allocations[i];
+            if (allocation.recipient == address(0)) revert InvalidAddress();
+            if (allocation.amount == 0) revert InvalidAmount();
+            totalAmount += allocation.amount;
+        }
+        if (totalAmount != amount) revert AmountMismatch();
         
         // 1. 获取借贷配置（优先使用代币特定配置，否则使用默认配置）
         address delegate = lendingDelegates[token];
@@ -236,8 +277,13 @@ contract DepositVault is Ownable, ReentrancyGuard {
         
         // 6. 批准借贷池（只在 allowance 不足时才 approve，节省 gas）
         // allowance() 是 view 函数，只需要 ~2600 gas（vs forceApprove 的 ~25000 gas）
-        if (IERC20(token).allowance(address(this), lendingTarget) < amount) {
+        // 检查 allowance < amount：只在真正需要时才 approve
+        // 如果设置为 max，即使借贷协议扣除 amount，由于 uint256 溢出，max - amount 仍然是 max
+        // 所以设置为 max 后，后续就不需要再次 approve
+        uint256 currentAllowance = IERC20(token).allowance(address(this), lendingTarget);
+        if (currentAllowance < amount) {
             // 使用 forceApprove 设置为 max，后续 deposit 不再需要 approve
+            // 即使借贷协议扣除 amount，由于溢出，max - amount = max，所以一直保持 max
             IERC20(token).forceApprove(lendingTarget, type(uint256).max);
         }
         
@@ -272,61 +318,165 @@ contract DepositVault is Ownable, ReentrancyGuard {
             revert NoYieldTokenReceived(); // 使用相同的错误，避免暴露内部逻辑
         }
         
-        // 9. 记录存款信息（使用全局唯一ID）
-        // 注意：yield token 保留在合约中，不会转给 depositor
-        // 只有 intendedRecipient 可以通过 claim() 提取，或 depositor 可以通过 recover() 取回
-        // 检查 depositCount 是否接近上限（防止溢出）
-        if (depositCount == type(uint256).max) {
-            revert InvalidAmount(); // 使用 InvalidAmount 表示已达到上限
-        }
-        depositId = depositCount++;
+        // 9. 按比例分配yield token给每个recipient
+        // 计算每个recipient应该获得的yield token数量（按比例分配）
+        // allocationsLength 已在上面声明，直接使用
+        depositIds = new uint256[](allocationsLength);
+        uint256 remainingYield = yieldAmount;
         
-        // 检查 yieldAmount 是否超过 uint96 最大值（约 79 万亿）
-        if (yieldAmount > type(uint96).max) {
+        // 检查 depositCount 是否接近上限（防止溢出，提前检查）
+        if (depositCount > type(uint256).max - allocationsLength) {
             revert InvalidAmount();
         }
         
-        deposits[depositId] = DepositInfo({
-            depositor: msg.sender,
-            depositTime: uint40(block.timestamp),
-            used: false,
-            intendedRecipient: intendedRecipient,
-            yieldAmount: uint96(yieldAmount),
-            yieldToken: yieldToken,
-            token: token
-        });
+        // 缓存 block.timestamp 和 msg.sender，避免循环中重复读取
+        uint40 currentTime = uint40(block.timestamp);
+        address depositor = msg.sender;
         
-        // 10. 添加到活跃列表（只记录未使用的）
-        depositorDeposits[msg.sender].push(depositId);
-        recipientDeposits[intendedRecipient].push(depositId);
+        for (uint256 i = 0; i < allocationsLength; i++) {
+            RecipientAllocation memory allocation = allocations[i];
+            
+            // 计算这个recipient应该获得的yield token数量
+            uint256 recipientYieldAmount;
+            if (i == allocationsLength - 1) {
+                // 最后一个recipient获得剩余的所有yield token（避免舍入误差）
+                recipientYieldAmount = remainingYield;
+            } else {
+                // 按比例分配：recipientYieldAmount = yieldAmount * allocation.amount / amount
+                recipientYieldAmount = (yieldAmount * allocation.amount) / amount;
+                remainingYield -= recipientYieldAmount;
+            }
+            
+            if (recipientYieldAmount == 0) revert InvalidAmount();
+            if (recipientYieldAmount > type(uint96).max) revert InvalidAmount();
+            
+            uint256 depositId = depositCount++;
+            
+            // 为每个recipient创建独立的deposit记录
+            deposits[depositId] = DepositInfo({
+                depositor: depositor,
+                depositTime: currentTime,
+                used: false,
+                intendedRecipient: allocation.recipient,
+                yieldAmount: uint96(recipientYieldAmount),
+                yieldToken: yieldToken,
+                token: token
+            });
+            
+            depositIds[i] = depositId;
+            
+            // 添加到活跃列表
+            depositorDeposits[depositor].push(depositId);
+            recipientDeposits[allocation.recipient].push(depositId);
+            
+            emit Deposited(
+                depositor,
+                depositId,
+                token,
+                allocation.amount,
+                yieldToken,
+                recipientYieldAmount,
+                keccak256(abi.encodePacked(allocation.recipient))
+            );
+        }
         
-        emit Deposited(
-            msg.sender,
-            depositId,
-            token,
-            amount,
-            yieldToken,
-            yieldAmount,
-            intendedRecipient
-        );
+        return depositIds;
     }
     
     /**
-     * @dev 地址B自取凭证代币（Pull模式）
+     * @dev 地址A直接存入yield token（jUSDT/aUSDT等，不经过借贷协议转换）
+     * @param yieldToken yield token地址（jUSDT、aEthUSDT、aBnbUSDT等）
+     * @param yieldAmount yield token总数量（必须等于所有allocations的amount之和）
+     * @param allocations Recipient分配数组，每个元素包含recipient地址和对应的yield token数量
+     * @return depositIds 存款ID数组（每个recipient对应一个depositId）
+     * @notice 自动从yieldToken获取底层代币地址（通过underlying()或UNDERLYING_ASSET_ADDRESS()）
+     */
+    function depositWithYieldToken(
+        address yieldToken,
+        uint256 yieldAmount,
+        RecipientAllocation[] calldata allocations
+    ) external nonReentrant returns (uint256[] memory depositIds) {
+        if (yieldToken == address(0)) revert InvalidAddress();
+        if (yieldAmount == 0) revert InvalidAmount();
+        if (allocations.length == 0) revert InvalidRecipients();
+        
+        // 验证总数量是否匹配
+        uint256 totalAmount = 0;
+        uint256 allocationsLength = allocations.length;
+        for (uint256 i = 0; i < allocationsLength; i++) {
+            RecipientAllocation memory allocation = allocations[i];
+            if (allocation.recipient == address(0)) revert InvalidAddress();
+            if (allocation.amount == 0) revert InvalidAmount();
+            totalAmount += allocation.amount;
+        }
+        if (totalAmount != yieldAmount) revert AmountMismatch();
+        
+        // 1. 接收yield token
+        IERC20(yieldToken).safeTransferFrom(msg.sender, address(this), yieldAmount);
+        
+        // 2. 自动获取底层代币地址
+        address underlyingToken = _getUnderlyingTokenFromYieldToken(yieldToken);
+        if (underlyingToken == address(0)) revert InvalidAddress();
+        
+        // 3. 为每个recipient创建独立的deposit记录
+        depositIds = new uint256[](allocations.length);
+        
+        for (uint256 i = 0; i < allocations.length; i++) {
+            if (allocations[i].amount > type(uint96).max) revert InvalidAmount();
+            
+            // 检查 depositCount 是否接近上限（防止溢出）
+            if (depositCount == type(uint256).max) {
+                revert InvalidAmount();
+            }
+            uint256 depositId = depositCount++;
+            
+            deposits[depositId] = DepositInfo({
+                depositor: msg.sender,
+                depositTime: uint40(block.timestamp),
+                used: false,
+                intendedRecipient: allocations[i].recipient,
+                yieldAmount: uint96(allocations[i].amount),
+                yieldToken: yieldToken,
+                token: underlyingToken
+            });
+            
+            depositIds[i] = depositId;
+            
+            // 添加到活跃列表
+            depositorDeposits[msg.sender].push(depositId);
+            recipientDeposits[allocations[i].recipient].push(depositId);
+            
+            emit Deposited(
+                msg.sender,
+                depositId,
+                underlyingToken,
+                0, // 底层代币数量为0（因为是直接存入yield token）
+                yieldToken,
+                allocations[i].amount,
+                keccak256(abi.encodePacked(allocations[i].recipient))
+            );
+        }
+        
+        return depositIds;
+    }
+    
+    /**
+     * @dev 地址B自取凭证代币（Pull模式）- 取出jUSDT
      * @param depositId 全局存款ID
      * @notice 只能领取 intendedRecipient 指向自己的存款
      * @notice 前端通过 getClaimableDeposits(msg.sender) 查询可领取的存款列表，然后调用此函数领取
+     * @notice 取出的是jUSDT，用户需要自己转换成USDT
      */
     function claim(uint256 depositId) external nonReentrant {
         address recipient = msg.sender;
         
         DepositInfo storage depositInfo = deposits[depositId];
         
+        // 验证：不能重复使用（已领取或已取回）- 优先检查 used 标志
+        if (depositInfo.used) revert AlreadyUsed();
+        
         // 验证存款是否存在（yieldAmount 是 uint96）
         if (depositInfo.yieldAmount == 0) revert DepositNotFound();
-        
-        // 验证：不能重复使用（已领取或已取回）
-        if (depositInfo.used) revert AlreadyUsed();
         
         // 验证：只有 intendedRecipient 指向自己的才能领取
         if (depositInfo.intendedRecipient != recipient) {
@@ -350,7 +500,7 @@ contract DepositVault is Ownable, ReentrancyGuard {
         emit Claimed(
             depositInfo.depositor,
             depositId,
-            recipient,
+            keccak256(abi.encodePacked(recipient)),
             depositInfo.yieldToken,
             amountToClaim
         );
@@ -362,15 +512,17 @@ contract DepositVault is Ownable, ReentrancyGuard {
      */
     function recover(uint256 depositId) external nonReentrant {
         DepositInfo storage depositInfo = deposits[depositId];
+        
+        // 验证：不能重复使用（已领取或已取回）- 优先检查 used 标志
+        if (depositInfo.used) revert AlreadyUsed();
+        
+        // 验证存款是否存在（yieldAmount 是 uint96）
         if (depositInfo.yieldAmount == 0) revert DepositNotFound();
         
         // 验证：必须是存款人本人才能取回
         if (depositInfo.depositor != msg.sender) {
             revert InvalidRecipient(); // 不是存款人
         }
-        
-        // 验证：不能重复使用（已领取或已取回）
-        if (depositInfo.used) revert AlreadyUsed();
         
         // 时间锁检查（depositTime 是 uint40，会自动转为 uint256 进行计算）
         if (block.timestamp < uint256(depositInfo.depositTime) + recoveryDelay) {
@@ -396,6 +548,97 @@ contract DepositVault is Ownable, ReentrancyGuard {
             depositId,
             depositInfo.yieldToken,
             amountToRecover
+        );
+    }
+    
+    /**
+     * @dev 地址A取回USDT（自动从借贷协议赎回jUSDT）
+     * @param depositId 全局存款ID
+     * @notice 合约自动从借贷协议赎回jUSDT，换成USDT后转给用户
+     */
+    function recoverAsUnderlying(uint256 depositId) external nonReentrant {
+        DepositInfo storage depositInfo = deposits[depositId];
+        
+        // 验证：不能重复使用（已领取或已取回）- 优先检查 used 标志
+        if (depositInfo.used) revert AlreadyUsed();
+        
+        // 验证存款是否存在（yieldAmount 是 uint96）
+        if (depositInfo.yieldAmount == 0) revert DepositNotFound();
+        
+        // 验证：必须是存款人本人才能取回
+        if (depositInfo.depositor != msg.sender) {
+            revert InvalidRecipient();
+        }
+        
+        // 时间锁检查
+        if (block.timestamp < uint256(depositInfo.depositTime) + recoveryDelay) {
+            revert RecoveryNotAvailable();
+        }
+        
+        // 保存要赎回的金额
+        uint256 yieldAmountToRedeem = uint256(depositInfo.yieldAmount);
+        address yieldToken = depositInfo.yieldToken;
+        address token = depositInfo.token;
+        
+        // 先更新状态（防止重入）
+        depositInfo.used = true;
+        depositInfo.yieldAmount = 0;
+        
+        // 从活跃列表中移除
+        _removeFromList(depositorDeposits[depositInfo.depositor], depositId);
+        _removeFromList(recipientDeposits[depositInfo.intendedRecipient], depositId);
+        
+        // 1. 获取借贷配置
+        address delegate = lendingDelegates[token];
+        address lendingTarget = lendingTargets[token];
+        
+        if (delegate == address(0)) {
+            delegate = defaultLendingDelegate;
+        }
+        if (lendingTarget == address(0)) {
+            lendingTarget = defaultLendingTarget;
+        }
+        
+        if (delegate == address(0) || lendingTarget == address(0)) {
+            revert InvalidAddress();
+        }
+        
+        _validateDelegate(delegate);
+        
+        // 2. 获取 tokenKey
+        string memory tokenKey = tokenKeys[token];
+        
+        // 3. 记录赎回前的USDT余额
+        uint256 underlyingBefore = IERC20(token).balanceOf(address(this));
+        
+        // 4. 通过适配器从借贷协议赎回（使用 delegatecall）
+        (bool success, ) = delegate.delegatecall(
+            abi.encodeWithSelector(
+                ILendingDelegate.withdraw.selector,
+                token,
+                tokenKey,
+                type(uint256).max, // 赎回全部
+                lendingTarget,
+                yieldToken
+            )
+        );
+        
+        if (!success) revert WithdrawFailed();
+        
+        // 5. 获取赎回后的USDT余额
+        uint256 underlyingAfter = IERC20(token).balanceOf(address(this));
+        uint256 underlyingAmount = underlyingAfter - underlyingBefore;
+        
+        if (underlyingAmount == 0) revert WithdrawFailed();
+        
+        // 6. 转账USDT给用户
+        IERC20(token).safeTransfer(msg.sender, underlyingAmount);
+        
+        emit Recovered(
+            msg.sender,
+            depositId,
+            yieldToken,
+            yieldAmountToRedeem
         );
     }
     
@@ -426,27 +669,26 @@ contract DepositVault is Ownable, ReentrancyGuard {
     
     
     /**
-     * @dev 查询接收地址可以领取的所有存款（活跃列表）
+     * @dev 查询接收地址可以领取的所有存款（活跃列表，只返回 used: false 的）
      * @param recipient 接收地址（中转地址）
-     * @return depositIds 全局存款ID列表（只包含未使用的）
+     * @return depositInfos 可提取存款信息列表
+     * @notice depositor 和 depositTime 仅当 msg.sender == recipient 时返回，否则为 address(0) 和 0
      */
     function getClaimableDeposits(address recipient)
         external
         view
-        returns (uint256[] memory depositIds)
+        returns (ClaimableDepositInfo[] memory depositInfos)
     {
         // 获取所有关联的存款ID（recipientDeposits 列表只包含 intendedRecipient == recipient 的存款）
         uint256[] memory allDepositIds = recipientDeposits[recipient];
         uint256 count = 0;
+        bool isRecipient = (msg.sender == recipient);
         
-        // 先计算未使用的存款数量
-        // 注意：recipientDeposits[recipient] 列表中的存款，其 intendedRecipient 应该都是 recipient
-        // 但为了安全，我们仍然检查 used 状态和 yieldAmount
+        // 先计算未使用的存款数量（used: false）
         for (uint256 i = 0; i < allDepositIds.length; i++) {
             uint256 depositId = allDepositIds[i];
             DepositInfo storage depositInfo = deposits[depositId];
             // 只计算未使用且有余额的存款
-            // 注意：不需要检查 intendedRecipient，因为列表本身已经过滤了
             if (!depositInfo.used && depositInfo.yieldAmount > 0) {
                 // 额外验证：确保 intendedRecipient 匹配（防御性检查）
                 if (depositInfo.intendedRecipient == recipient) {
@@ -456,7 +698,7 @@ contract DepositVault is Ownable, ReentrancyGuard {
         }
         
         // 创建结果数组
-        uint256[] memory result = new uint256[](count);
+        depositInfos = new ClaimableDepositInfo[](count);
         uint256 index = 0;
         
         // 填充结果数组
@@ -467,13 +709,20 @@ contract DepositVault is Ownable, ReentrancyGuard {
             if (!depositInfo.used && depositInfo.yieldAmount > 0) {
                 // 额外验证：确保 intendedRecipient 匹配（防御性检查）
                 if (depositInfo.intendedRecipient == recipient) {
-                    result[index] = depositId;
+                    depositInfos[index] = ClaimableDepositInfo({
+                        depositId: depositId,
+                        yieldAmount: depositInfo.yieldAmount,
+                        yieldToken: depositInfo.yieldToken,
+                        token: depositInfo.token,
+                        depositor: isRecipient ? depositInfo.depositor : address(0),
+                        depositTime: isRecipient ? depositInfo.depositTime : 0
+                    });
                     index++;
                 }
             }
         }
         
-        return result;
+        return depositInfos;
     }
     
     /**
@@ -1006,6 +1255,38 @@ contract DepositVault is Ownable, ReentrancyGuard {
         }
         // 如果元素不存在，这是一个严重的状态不一致问题
         revert DepositIdNotFoundInList();
+    }
+    
+    /**
+     * @dev 从yield token获取底层代币地址
+     * @param yieldToken yield token地址（jUSDT、aUSDT等）
+     * @return underlyingToken 底层代币地址
+     * @notice 支持JustLend（通过underlying()）和AAVE（通过UNDERLYING_ASSET_ADDRESS()）
+     */
+    function _getUnderlyingTokenFromYieldToken(address yieldToken) internal view returns (address underlyingToken) {
+        // 尝试JustLend接口：underlying()
+        (bool success1, bytes memory data1) = yieldToken.staticcall(
+            abi.encodeWithSignature("underlying()")
+        );
+        if (success1 && data1.length == 32) {
+            address token1 = abi.decode(data1, (address));
+            if (token1 != address(0)) {
+                return token1;
+            }
+        }
+        
+        // 尝试AAVE接口：UNDERLYING_ASSET_ADDRESS()
+        (bool success2, bytes memory data2) = yieldToken.staticcall(
+            abi.encodeWithSignature("UNDERLYING_ASSET_ADDRESS()")
+        );
+        if (success2 && data2.length == 32) {
+            address token2 = abi.decode(data2, (address));
+            if (token2 != address(0)) {
+                return token2;
+            }
+        }
+        
+        return address(0);
     }
     
 }

@@ -10,6 +10,14 @@ webfront/.vercel
 webfront/.next/**/*
 webfront/out/**/*
 
+# Next.js (p2pswap frontend)
+p2pswap/frontend/.next/
+p2pswap/frontend/out/
+p2pswap/frontend/.vercel
+p2pswap/frontend/node_modules/
+p2pswap/frontend/.env.local
+p2pswap/frontend/.env
+
 # Foundry (contracts)
 contracts/out/
 contracts/cache/
@@ -17,6 +25,7 @@ contracts/lib/
 contracts/broadcast/
 contracts/foundry.lock
 contracts/package-lock.json
+contracts/deployed/result_local.json
 
 # TypeScript
 *.tsbuildinfo
@@ -108,3 +117,8 @@ Thumbs.db
 *.tar.gz
 *.rar
 *.7z
+
+# p2pswap project (new standalone project)
+# Note: p2pswap is a separate project, but we keep it in the repo for now
+# If you want to ignore the entire p2pswap directory, uncomment the line below:
+# p2pswap/

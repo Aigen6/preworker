@@ -8,14 +8,18 @@
     "languageSelection": "Language Selection",
     "subtitle": "Private Bank on Blockchain",
     "walletConnected": "Wallet Connected",
-    "walletAddress": "Wallet Address"
+    "walletAddress": "Wallet Address",
+    "fullyConnected": "Wallet and backend connected",
+    "backendNotConnected": "Wallet connected, backend not connected",
+    "notConnected": "Wallet not connected"
   },
   "footer": {
     "home": "Home",
     "preprocess": "Preprocess",
     "deposit": "Deposit",
     "defi": "DeFI Withdrawal",
-    "records": "Withdrawal History"
+    "records": "Withdrawal History",
+    "statistics": "Statistics"
   },
   "home": {
     "title": "Welcome to Next.js Template",
@@ -126,6 +130,29 @@
       "allocated": "Allocated {total}",
       "unallocated": "Unallocated"
     },
+    "tronGasRental": {
+      "title": "TRON Gas Fee",
+      "sufficient": "Sufficient",
+      "insufficient": "Insufficient",
+      "energy": "Energy",
+      "bandwidth": "Bandwidth",
+      "needMore": "Need More",
+      "tip": "💡 Tip: Your Energy/Bandwidth is insufficient, transactions may consume more TRX",
+      "tipDetail": "It's recommended to rent Energy/Bandwidth in advance through rental services, which can save 30-90% of transaction costs",
+      "rentButton": "Go to Rent",
+      "rentalServices": "Recommended Rental Services",
+      "rentalTitle": "Rent Energy/Bandwidth",
+      "selectProvider": "Select Provider",
+      "estimating": "Estimating cost...",
+      "estimatedCost": "Estimated Cost",
+      "estimatedSavings": "Estimated Savings",
+      "estimateCost": "Estimate Cost",
+      "confirmRental": "Confirm Rental",
+      "processing": "Processing...",
+      "paymentAmount": "Payment Amount",
+      "paymentNote": "After confirmation, a TRX transfer will be initiated in your wallet to complete the payment",
+      "payWithTRX": "Pay with TRX"
+    },
     "status": {
       "idle": "Idle",
       "pending": "Pending",
@@ -155,7 +182,8 @@
     "riskFeeInfo": "Risk Score and Fee Rate Information",
     "baseFeeRate": "Base Fee Rate",
     "riskBasedFee": "Risk-Based Fee Rate",
-    "viewRiskFeeDetails": "View Details"
+    "viewRiskFeeDetails": "View Details",
+    "riskScoreTooHigh": "Risk score is too high, deposit operation cannot be performed"
   },
   "defi": {
     "title": "Seamless DeFi",

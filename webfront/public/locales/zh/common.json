@@ -8,14 +8,18 @@
     "languageSelection": "语言选择",
     "subtitle": "区块链上的私有银行",
     "walletConnected": "钱包已连接",
-    "walletAddress": "钱包地址"
+    "walletAddress": "钱包地址",
+    "fullyConnected": "钱包和后端已连接",
+    "backendNotConnected": "钱包已连接，后端未连接",
+    "notConnected": "未连接钱包"
   },
   "footer": {
     "home": "首页",
     "preprocess": "预处理",
     "deposit": "存入隐私池",
     "defi": "DeFI提取",
-    "records": "提现历史"
+    "records": "提现历史",
+    "statistics": "统计"
   },
   "home": {
     "title": "欢迎使用 Next.js 模板",
@@ -126,6 +130,29 @@
       "allocated": "已分配 {total}",
       "unallocated": "未分配"
     },
+    "tronGasRental": {
+      "title": "TRON Gas 费用",
+      "sufficient": "资源充足",
+      "insufficient": "资源不足",
+      "energy": "Energy",
+      "bandwidth": "Bandwidth",
+      "needMore": "需要更多",
+      "tip": "💡 提示：您的 Energy/Bandwidth 不足，交易可能会消耗更多 TRX",
+      "tipDetail": "建议通过租赁服务提前获取 Energy/Bandwidth，可以节省 30-90% 的交易成本",
+      "rentButton": "前往租赁",
+      "rentalServices": "推荐租赁服务",
+      "rentalTitle": "租赁 Energy/Bandwidth",
+      "selectProvider": "选择服务商",
+      "estimating": "正在估算费用...",
+      "estimatedCost": "预计费用",
+      "estimatedSavings": "预计节省",
+      "estimateCost": "估算费用",
+      "confirmRental": "确认租赁",
+      "processing": "处理中...",
+      "paymentAmount": "支付金额",
+      "paymentNote": "点击确认后，将在钱包中发起TRX转账完成支付",
+      "payWithTRX": "使用TRX支付"
+    },
     "status": {
       "idle": "空闲",
       "pending": "处理中",
@@ -155,7 +182,8 @@
     "riskFeeInfo": "风险评分和费率信息",
     "baseFeeRate": "基础费率",
     "riskBasedFee": "风险费率",
-    "viewRiskFeeDetails": "查看详细信息"
+    "viewRiskFeeDetails": "查看详细信息",
+    "riskScoreTooHigh": "风险评分过高，无法进行存入操作"
   },
   "defi": {
     "title": "无缝 DeFi",
