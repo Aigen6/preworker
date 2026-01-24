@@ -1,156 +1,294 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import SvgIcon from './SvgIcon'
-import { useTranslation } from '@/lib/hooks/use-translation'
+import { useState, useRef, useEffect } from 'react';
+import { X, Copy, Check } from 'lucide-react';
+import { formatAddress } from '@/lib/utils/format-address';
+import { getAddressPoolService } from '@/lib/services/address-pool.service';
 
 interface AddressDisplayProps {
-  address: string
-  className?: string
-  chainId?: number // 链ID，用于格式化地址
+  address: string;
+  className?: string;
+  showFullOnClick?: boolean;
+  chainId?: number; // 链ID，用于查找地址池中的编号
+  showIndex?: boolean; // 是否显示编号（如果地址在地址池中）
+  addressIndex?: number | null; // 直接传递的地址编号（如果已知）
+  feeRecipientAddresses?: string[]; // 手续费接收地址列表（可选，如果不提供则自动加载）
+  showFeeLabel?: boolean; // 是否显示手续费标识（默认true）
+  feeIndex?: number | null; // 手续费地址的序号（从1开始）
 }
 
-export function AddressDisplay({ address, className = '', chainId }: AddressDisplayProps) {
-  const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
-  const [showFull, setShowFull] = useState(false)
+// Address Dialog Component
+export function AddressDialog({
+  isOpen,
+  onClose,
+  address,
+  addressIndex,
+  isFeeRecipient = false,
+  feeIndex,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  address: string;
+  addressIndex?: number | null;
+  isFeeRecipient?: boolean;
+  feeIndex?: number | null; // 手续费地址的序号（从1开始）
+}) {
+  const [copied, setCopied] = useState(false);
+  const addressRef = useRef<HTMLDivElement>(null);
 
-  // 根据链类型格式化地址，去掉前导零
-  const formatAddressForChain = (addr: string, chainId?: number): string => {
-    if (!addr) return addr
-
-    // 如果是32字节格式（64个十六进制字符，前面可能有0），转换为标准地址格式
-    // EVM链（Ethereum, BSC等）：0x + 20字节（40个十六进制字符）
-    // TRON：Base58格式或0x + 20字节
-    if (chainId) {
-      // EVM链（60=Ethereum, 714=BSC, 966=Polygon等）
-      if ([60, 714, 966, 250, 43114, 9001, 10001, 8453, 324].includes(chainId)) {
-        // 去掉前导零，保留20字节（40个十六进制字符）
-        let cleanAddr = addr.replace(/^0+/, '')
-        // 如果地址长度超过40，取后40位（标准EVM地址）
-        if (cleanAddr.length > 40) {
-          cleanAddr = cleanAddr.slice(-40)
-        }
-        // 确保是40个字符，不足则前面补0
-        cleanAddr = cleanAddr.padStart(40, '0')
-        return `0x${cleanAddr}`
-      }
-      // TRON链（195）
-      else if (chainId === 195) {
-        // TRON 地址：如果用户输入的是 Base58（以 T 开头），直接返回原始值
-        const base58Regex = /^[1-9A-HJ-NP-Za-km-z]+$/
-        if ((addr.startsWith('T') || addr.startsWith('t')) && base58Regex.test(addr)) {
-          return addr
-        }
-
-        // 对于十六进制格式的 TRON 地址，去掉前导零，提取后40个字符（20字节），但不添加 0x 前缀
-        // 因为 TRON 地址应该是 Base58 格式，如果后端返回的是十六进制，我们保持原样显示
-        let cleanAddr = addr.replace(/^0+/, '').replace(/^0x/i, '')
-        if (cleanAddr.length > 40) {
-          cleanAddr = cleanAddr.slice(-40)
-        }
-        cleanAddr = cleanAddr.padStart(40, '0')
-        // TRON 链的十六进制地址不添加 0x 前缀，直接返回（或者可以显示为 "TRON 地址（十六进制）"）
-        // 但为了保持一致性，我们仍然返回十六进制格式，只是不添加 0x
-        return cleanAddr
-      }
+  useEffect(() => {
+    if (copied) {
+      const timer = setTimeout(() => setCopied(false), 2000);
+      return () => clearTimeout(timer);
     }
-
-    // 默认处理：去掉前导零
-    let cleanAddr = addr.replace(/^0+/, '')
-    // 如果已经是0x开头，保持原样
-    if (addr.startsWith('0x') || addr.startsWith('0X')) {
-      return addr
-    }
-    // 如果地址长度超过40，取后40位
-    if (cleanAddr.length > 40) {
-      cleanAddr = cleanAddr.slice(-40)
-    }
-    // 确保是40个字符，不足则前面补0
-    cleanAddr = cleanAddr.padStart(40, '0')
-    return `0x${cleanAddr}`
-  }
-
-  // 格式化地址：显示前6位和后4位
-  const formatAddress = (addr: string) => {
-    const formatted = formatAddressForChain(addr, chainId)
-    if (!formatted || formatted.length < 10) return formatted
-    return `${formatted.slice(0, 6)}...${formatted.slice(-4)}`
-  }
-
-  // 获取完整格式化地址
-  const getFullAddress = () => {
-    return formatAddressForChain(address, chainId)
-  }
+  }, [copied]);
 
   const handleCopy = async () => {
     try {
-      // 复制格式化后的地址
-      const formattedAddress = getFullAddress()
-      await navigator.clipboard.writeText(formattedAddress)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch (error) {
-      console.error('复制失败:', error)
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+    } catch (err) {
+      console.error('Failed to copy:', err);
     }
-  }
+  };
+
+  if (!isOpen) return null;
 
   return (
-    <div className={`relative ${className}`}>
-      <div className="flex items-center justify-between">
-        {/* 短地址 */}
-        <span className="text-sm text-white font-mono">
-          {formatAddress(address)}
-        </span>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">完整地址</h3>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-        {/* 显示全地址图标 */}
-        <button
-          onClick={() => setShowFull(!showFull)}
-          className="w-4 h-4 flex items-center justify-center hover:opacity-70 transition-opacity"
-          title={t('common.showFullAddress')}
-        >
-          <SvgIcon
-            src="/icons/eye.svg"
-            className="w-4 h-4 text-primary"
-          />
-        </button>
-      </div>
-
-      {/* 浮动显示全地址 - 居中显示 */}
-      {showFull && (
-        <>
-          {/* 遮罩层 */}
-          <div
-            className="fixed inset-0 z-40 bg-black/50"
-            onClick={() => setShowFull(false)}
-          />
-          {/* 居中弹窗 */}
-          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 p-4 bg-black-3 rounded-xl border border-black-3 shadow-lg min-w-[280px] max-w-[90vw] w-auto">
-            <div className="flex items-start justify-between mb-2">
-              <span className="text-xs text-black-9">{t('common.fullAddress')}</span>
-              <button
-                onClick={() => setShowFull(false)}
-                className="w-4 h-4 flex items-center justify-center hover:opacity-70 transition-opacity"
-              >
-                <SvgIcon
-                  src="/icons/common-close.svg"
-                  className="w-4 h-4 text-black-9"
-                />
-              </button>
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm text-gray-500">地址:</p>
+              <div className="flex items-center gap-2">
+                {isFeeRecipient && (
+                  <span className="px-2 py-1 text-xs bg-yellow-500/20 text-yellow-600 rounded border border-yellow-500/30 whitespace-nowrap">
+                    {feeIndex !== null && feeIndex !== undefined ? `手续费地址 #${feeIndex}` : '手续费地址'}
+                  </span>
+                )}
+                {addressIndex !== null && addressIndex !== undefined && (
+                  <span className="text-lg font-semibold text-primary flex-shrink-0">#{addressIndex}</span>
+                )}
+              </div>
             </div>
-            <p className="text-sm text-white font-mono break-all leading-relaxed mb-3">
-              {getFullAddress()}
-            </p>
-            <button
-              onClick={handleCopy}
-              className="w-full px-3 py-2 bg-primary text-black-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+            <div
+              ref={addressRef}
+              className="text-lg font-mono font-semibold text-gray-900 break-all"
             >
-              {copied ? t('common.copied') : t('common.copyAddress')}
-            </button>
+              <span className="break-all">{address}</span>
+            </div>
           </div>
-        </>
-      )}
+
+          <button
+            onClick={handleCopy}
+            className="w-full flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-black hover:opacity-90 transition-opacity"
+          >
+            {copied ? (
+              <>
+                <Check className="h-4 w-4" />
+                <span>已复制</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-4 w-4" />
+                <span>复制</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
-  )
+  );
 }
 
+export function AddressDisplay({
+  address,
+  className = '',
+  showFullOnClick = true,
+  chainId,
+  showIndex = true,
+  addressIndex: propAddressIndex, // 从 props 接收的地址编号
+  feeRecipientAddresses: propFeeRecipientAddresses, // 从 props 接收的手续费地址列表
+  showFeeLabel = true, // 默认显示手续费标识
+  feeIndex: propFeeIndex, // 从 props 接收的手续费地址序号
+}: AddressDisplayProps) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [addressIndex, setAddressIndex] = useState<number | null>(propAddressIndex ?? null);
+  const [isFeeRecipient, setIsFeeRecipient] = useState(false);
+  const [feeRecipientAddresses, setFeeRecipientAddresses] = useState<string[]>(propFeeRecipientAddresses || []);
+  const isMountedRef = useRef(true);
+
+  // 组件挂载时设置 isMounted 为 true，卸载时设置为 false
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // 加载手续费接收地址（如果未通过props提供）
+  useEffect(() => {
+    if (propFeeRecipientAddresses) {
+      if (isMountedRef.current) {
+        setFeeRecipientAddresses(propFeeRecipientAddresses);
+      }
+      return;
+    }
+    
+    if (showFeeLabel && chainId && address) {
+      const loadFeeRecipients = async () => {
+        try {
+          const { getKeyManagerClient, chainIdToKeyManagerChain } = await import('@/lib/services/keymanager-client');
+          const keyManagerClient = getKeyManagerClient();
+          const chain = chainIdToKeyManagerChain(chainId);
+          if (!chain) {
+            return;
+          }
+          
+          // 从索引19050118开始，获取10个地址
+          const startIndex = 19050118;
+          const count = 10;
+          const addresses = await keyManagerClient.exportBatch(chain, startIndex, count);
+          const addressList = addresses.map(addr => addr.address.trim().toLowerCase());
+          // 检查组件是否仍然挂载
+          if (isMountedRef.current) {
+            setFeeRecipientAddresses(addressList);
+          }
+        } catch (error) {
+          console.error('加载手续费接收地址失败:', error);
+        }
+      };
+      loadFeeRecipients();
+    }
+  }, [chainId, address, showFeeLabel, propFeeRecipientAddresses]);
+
+  // 检查是否是手续费地址
+  useEffect(() => {
+    if (!isMountedRef.current) return;
+    
+    if (address && feeRecipientAddresses.length > 0) {
+      const normalizedAddress = address.toLowerCase().trim();
+      const isFee = feeRecipientAddresses.includes(normalizedAddress);
+      setIsFeeRecipient(isFee);
+    } else {
+      setIsFeeRecipient(false);
+    }
+  }, [address, feeRecipientAddresses]);
+
+  // 如果启用了显示编号且提供了 chainId，查找地址在地址池中的编号
+  // 如果已经通过 props 传递了 addressIndex，则优先使用
+  useEffect(() => {
+    if (!isMountedRef.current) return;
+    
+    if (propAddressIndex !== null && propAddressIndex !== undefined) {
+      setAddressIndex(propAddressIndex)
+      return
+    }
+    
+    if (showIndex && chainId && address) {
+      const findAddressIndex = async () => {
+        try {
+          const addressPool = getAddressPoolService(chainId);
+          // 确保地址池已加载
+          await addressPool.reload();
+          
+          // 检查组件是否仍然挂载
+          if (!isMountedRef.current) return;
+          
+          const allAddresses = addressPool.getAllAddresses();
+          const normalizedAddress = address.toLowerCase().trim();
+          const index = allAddresses.findIndex(a => 
+            a.address.toLowerCase().trim() === normalizedAddress
+          );
+          if (isMountedRef.current) {
+            if (index >= 0) {
+              setAddressIndex(index + 1); // 编号从1开始
+            } else {
+              setAddressIndex(null);
+            }
+          }
+        } catch (e) {
+          // 忽略错误，但尝试使用已加载的地址池
+          if (!isMountedRef.current) return;
+          
+          try {
+            const addressPool = getAddressPoolService(chainId);
+            const allAddresses = addressPool.getAllAddresses();
+            const normalizedAddress = address.toLowerCase().trim();
+            const index = allAddresses.findIndex(a => 
+              a.address.toLowerCase().trim() === normalizedAddress
+            );
+            if (isMountedRef.current) {
+              if (index >= 0) {
+                setAddressIndex(index + 1);
+              } else {
+                setAddressIndex(null);
+              }
+            }
+          } catch (e2) {
+            if (isMountedRef.current) {
+              setAddressIndex(null);
+            }
+          }
+        }
+      };
+      findAddressIndex();
+    } else {
+      setAddressIndex(null);
+    }
+  }, [address, chainId, showIndex, propAddressIndex]);
+
+  if (!address) {
+    return <span className={className}>-</span>;
+  }
+
+  const formattedAddress = formatAddress(address);
+
+  return (
+    <>
+      <button
+        onClick={() => showFullOnClick && setIsDialogOpen(true)}
+        className={`font-mono transition-colors inline-flex items-center gap-1 ${showFullOnClick ? 'cursor-pointer hover:opacity-80' : 'cursor-default'} ${className}`}
+        title={showFullOnClick ? '点击查看完整地址' : address}
+        type="button"
+      >
+        {formattedAddress}
+        {addressIndex !== null && (
+          <span className="text-primary font-semibold ml-1">#{addressIndex}</span>
+        )}
+        {showFeeLabel && isFeeRecipient && (
+          <span className="px-1.5 py-0.5 text-[10px] sm:text-xs bg-yellow-500/20 text-yellow-500 rounded border border-yellow-500/30 ml-1 whitespace-nowrap">
+            手续费
+          </span>
+        )}
+      </button>
+      {showFullOnClick && (
+        <AddressDialog
+          isOpen={isDialogOpen}
+          onClose={() => setIsDialogOpen(false)}
+          address={address}
+          addressIndex={addressIndex}
+          isFeeRecipient={isFeeRecipient}
+          feeIndex={propFeeIndex}
+        />
+      )}
+    </>
+  );
+}

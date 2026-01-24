@@ -473,10 +473,10 @@ function FullAddressRankDisplayer({
     if (toastContext) {
       return toastContext.showInfo
     }
-    // Fallback: 如果不在 ToastProvider 内，使用 alert
+    // Fallback: 如果不在 ToastProvider 内，使用 console.warn（不显示弹窗）
     return (message: string) => {
       if (typeof window !== 'undefined') {
-        alert(message)
+        console.warn('[地址排名]', message)
       }
     }
   }, [toastContext])

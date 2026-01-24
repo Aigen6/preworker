@@ -122,3 +122,48 @@ Thumbs.db
 # Note: p2pswap is a separate project, but we keep it in the repo for now
 # If you want to ignore the entire p2pswap directory, uncomment the line below:
 # p2pswap/
+
+# Additional build outputs and compiled files
+# Go binaries
+backend/bin/
+backend/*.exe
+backend/*.test
+backend/server
+backend/main
+
+# Rust build artifacts (if any)
+target/
+Cargo.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+
+# Additional Next.js build artifacts
+**/.next/
+**/out/
+**/.vercel
+**/tsconfig.tsbuildinfo
+
+# Additional environment files (ensure all are covered)
+**/.env
+**/.env.local
+**/.env.*.local
+**/.env.production
+**/.env.development
+**/.env.test
+**/.env.staging
+!.env.example
+!**/.env.example
+
+# Additional node_modules (ensure all are covered)
+**/node_modules/
+
+# Additional dist/build directories
+**/dist/
+**/build/

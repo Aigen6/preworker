@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Html5Qrcode } from "html5-qrcode"
-import SvgIcon from "./SvgIcon"
+import { X, QrCode } from "lucide-react"
 import { validateAddressForSlip44, getAddressPlaceholder } from "@/lib/utils/address-validation"
 import { useTranslation } from "@/lib/hooks/use-translation"
+import { useToast } from "@/components/providers/toast-provider"
 
 interface AddressInputProps {
   value: string
@@ -111,13 +112,13 @@ export function AddressInput({
     } catch (error: any) {
       console.error("启动二维码扫描失败:", error)
       setIsScanning(false)
-      // 使用更友好的错误提示
+      // 使用 Toast 显示错误提示
       if (error?.message?.includes("Permission denied") || error?.name === "NotAllowedError") {
-        alert("无法访问摄像头，请检查浏览器权限设置")
+        showError("无法访问摄像头，请检查浏览器权限设置")
       } else if (error?.message?.includes("NotFound") || error?.name === "NotFoundError") {
-        alert("未找到摄像头设备")
+        showError("未找到摄像头设备")
       } else {
-        alert("无法启动二维码扫描，请重试")
+        showError("无法启动二维码扫描，请重试")
       }
     }
   }
@@ -160,49 +161,34 @@ export function AddressInput({
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={`w-full p-4 pr-24 bg-black-2 border-2 rounded-[12px] text-white focus:outline-none focus:border-primary ${
+          className={`w-full h-10 px-3 pr-20 bg-black-2 border-2 rounded-lg text-white text-sm focus:outline-none focus:border-primary ${
             displayError ? "border-red-500" : "border-black-3"
           } ${className}`}
           placeholder={placeholder || defaultPlaceholder}
         />
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
           {/* 清除按钮 */}
           {value && (
             <button
               type="button"
               onClick={handleClear}
-              className="p-2 hover:bg-black-3 rounded-lg transition-colors"
+              className="p-1.5 hover:bg-black-3 rounded-lg transition-colors"
               aria-label="清除"
             >
-              <SvgIcon
-                src="/icons/common-close.svg"
-                className="w-4 h-4 text-white opacity-70 hover:opacity-100"
-              />
+              <X className="w-4 h-4 text-white opacity-70 hover:opacity-100" />
             </button>
           )}
           {/* 二维码扫描按钮 */}
           <button
             type="button"
             onClick={isScanning ? stopScan : handleStartScan}
-            className="p-2 hover:bg-black-3 rounded-lg transition-colors"
+            className="p-1.5 hover:bg-black-3 rounded-lg transition-colors"
             aria-label={isScanning ? "停止扫描" : "扫描二维码"}
           >
             {isScanning ? (
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : (
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 16 16"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="text-white opacity-70 hover:opacity-100"
-              >
-                <path
-                  d="M2 2H6V4H4V6H2V2ZM10 2H14V6H12V4H10V2ZM2 10V14H4V12H6V14H10V12H12V14H14V10H12V8H10V10H6V8H4V10H2ZM12 8H14V6H12V8Z"
-                  fill="currentColor"
-                />
-              </svg>
+              <QrCode className="w-4 h-4 text-white opacity-70 hover:opacity-100" />
             )}
           </button>
         </div>
@@ -223,10 +209,7 @@ export function AddressInput({
                 onClick={stopScan}
                 className="p-2 hover:bg-black-3 rounded-lg transition-colors"
               >
-                <SvgIcon
-                  src="/icons/common-close.svg"
-                  className="w-5 h-5 text-white"
-                />
+                <X className="w-5 h-5 text-white" />
               </button>
             </div>
             <div

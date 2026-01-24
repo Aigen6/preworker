@@ -3,7 +3,7 @@
  * 根据 SLIP-44 Chain ID 验证地址格式
  */
 
-import { isValidEVMAddress, isValidTronAddress } from '@enclave-hq/wallet-sdk'
+import { isValidEVMAddress, isValidTronAddress } from '@/lib/services/keymanager-signer'
 
 /**
  * 根据 SLIP-44 Chain ID 验证地址

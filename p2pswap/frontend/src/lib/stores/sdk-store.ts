@@ -1,6 +1,6 @@
 import { makeAutoObservable } from 'mobx'
-import { EnclaveClient, WalletSDKContractProvider, createUniversalAddress, parseUniversalAddress, extractAddress } from '@enclave-hq/sdk'
-import type { WalletManager } from '@enclave-hq/wallet-sdk'
+import { EnclaveClient, createUniversalAddress, parseUniversalAddress, extractAddress } from '@enclave-hq/sdk'
+import { KeyManagerAdapter } from '@/lib/services/keymanager-adapter'
 
 // SDK 数据类型定义
 export interface Deposit {
@@ -80,8 +80,8 @@ export class SDKStore {
   // Enclave SDK 实例
   private _sdk: EnclaveClient | null = null
 
-  // 保存 WalletManager 引用，用于 token 刷新
-  private _walletManager: WalletManager | null = null
+  // 保存 KeyManager 配置，用于 token 刷新
+  private _keyManagerConfig: { chainId: number; addressIndex: number } | null = null
 
   // JWT Token 过期时间（24小时）
   private tokenExpiryTime: number | null = null
@@ -121,109 +121,47 @@ export class SDKStore {
   }
 
   /**
-   * 从 WalletManager 创建 signer adapter
-   * 
-   * 注意：现在可以直接使用 Wallet SDK 的适配器作为 signer（因为适配器实现了 ISigner 接口）
-   * 但为了保持兼容性，这里仍然使用自定义 signer 对象
-   * 
-   * 新的 SDK 可以直接处理 TRON 的 Base58 地址，不需要转换
+   * 从 KeyManager 创建 signer adapter
+   * 使用 KeyManagerAdapter，通过 KeyManager API 进行签名
    */
-  private createWalletSigner(walletManager: WalletManager) {
-    return {
-      getAddress: async (): Promise<string> => {
-        const account = walletManager.getPrimaryAccount()
-        if (!account) {
-          console.error('[SDK Store] ❌ Signer.getAddress: 没有账户连接')
-          throw new Error('No account connected')
-        }
-        
-        console.log('[SDK Store] 📋 Signer.getAddress 返回地址:', {
-          nativeAddress: account.nativeAddress,
-          chainId: account.chainId,
-          universalAddress: account.universalAddress,
-        })
-        
-        // 直接返回 nativeAddress，让 SDK 的 createUniversalAddress 来处理地址格式
-        // SDK 现在可以自动识别 EVM (0x...) 和 TRON (T...) 地址格式
-        return account.nativeAddress
-      },
-      signMessage: async (message: string | Uint8Array): Promise<string> => {
-        try {
-          // 检查钱包是否连接
-          const account = walletManager.getPrimaryAccount()
-          if (!account) {
-            throw new Error('Wallet is not connected. Please connect wallet first.')
-          }
-
-          let messageStr: string
-          if (typeof message === 'string') {
-            messageStr = message
-          } else {
-            // Convert Uint8Array to hex string (browser compatible)
-            messageStr = Array.from(message)
-              .map(b => b.toString(16).padStart(2, '0'))
-              .join('')
-          }
-          
-          console.log('🔐 [Withdraw] 开始签名消息...')
-          console.log('📝 [Withdraw] 签名消息内容:')
-          console.log('─'.repeat(60))
-          // 如果是多行消息，分行打印
-          if (messageStr.includes('\n')) {
-            const lines = messageStr.split('\n').filter(line => line.length > 0)
-            lines.forEach(line => {
-              console.log(line)
-            })
-          } else {
-            console.log(messageStr.substring(0, 200) + (messageStr.length > 200 ? '...' : ''))
-          }
-          console.log('─'.repeat(60))
-          
-          const signature = await walletManager.signMessage(messageStr)
-          console.log('✅ [Withdraw] 签名成功:', signature.substring(0, 20) + '...' + signature.substring(signature.length - 10))
-          return signature
-        } catch (error) {
-          console.error('[SDK Store] Sign message error:', error)
-          // 重新抛出错误，让上层处理
-          throw error
-        }
-      },
-    }
+  private createKeyManagerSigner(chainId: number, addressIndex: number): KeyManagerAdapter {
+    return new KeyManagerAdapter({
+      chainId,
+      addressIndex,
+    })
   }
 
-  // 连接 SDK（使用 WalletManager）
-  async connect(walletManager?: WalletManager, config?: { apiUrl?: string; wsUrl?: string }, forceReconnect: boolean = false) {
+  // 连接 SDK（使用 KeyManager）
+  async connect(
+    chainId: number,
+    addressIndex: number = 1, // 默认使用索引1的地址
+    config?: { apiUrl?: string; wsUrl?: string },
+    forceReconnect: boolean = false
+  ) {
     this.isLoading = true
     this.error = null
     try {
-      // 如果没有 walletManager，无法连接（前端使用钱包连接，不是 signer）
-      if (!walletManager) {
-        throw new Error('WalletManager is required. Please connect wallet first.')
-      }
-
-      // 检查钱包是否已连接
-      const account = walletManager.getPrimaryAccount()
-      if (!account) {
-        throw new Error('Wallet is not connected. Please connect wallet first.')
-      }
+      // 创建 KeyManager Adapter
+      const signer = this.createKeyManagerSigner(chainId, addressIndex)
+      
+      // 获取地址用于验证
+      const address = await signer.getAddress()
 
       // 如果已有 SDK 实例且已连接，检查地址或链 ID 是否变化
       if (this._sdk && this._sdk.isConnected && !forceReconnect) {
         // 获取 SDK 当前使用的地址和链 ID
         const sdkAddress = this._sdk.address ? extractAddress(this._sdk.address) : null
         const sdkChainId = this._sdk.address?.chainId || null
-        const currentAddress = account.nativeAddress
-        const currentChainId = account.chainId
         
         // 检查地址是否变化
-        const addressChanged = sdkAddress && currentAddress && sdkAddress.toLowerCase() !== currentAddress.toLowerCase()
+        const addressChanged = sdkAddress && address && sdkAddress.toLowerCase() !== address.toLowerCase()
         
         // 检查链 ID 是否变化
         // 重要：SDK 使用 chainId 创建 UniversalAddress，如果链 ID 变化，必须重新连接
-        const chainIdChanged = sdkChainId && currentChainId && sdkChainId !== currentChainId
+        const chainIdChanged = sdkChainId && chainId && sdkChainId !== chainId
         
         // 如果地址和链 ID 都一致，直接返回
-        if (!addressChanged && !chainIdChanged && sdkAddress && currentAddress && sdkAddress.toLowerCase() === currentAddress.toLowerCase()) {
+        if (!addressChanged && !chainIdChanged && sdkAddress && address && sdkAddress.toLowerCase() === address.toLowerCase()) {
           this.isConnected = true
           this.isLoading = false
           return
@@ -234,9 +172,9 @@ export class SDKStore {
           console.log('[SDK Store] 检测到变化，需要重新连接:', {
             reason: addressChanged ? '地址变化' : '链 ID 变化',
             oldAddress: sdkAddress,
-            newAddress: currentAddress,
+            newAddress: address,
             oldChainId: sdkChainId,
-            newChainId: currentChainId
+            newChainId: chainId
           })
         }
         
@@ -259,62 +197,36 @@ export class SDKStore {
       const apiUrl = config?.apiUrl || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
       const wsUrl = config?.wsUrl || process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001/ws'
 
-      // 从 WalletManager 创建 signer
-      const signer = this.createWalletSigner(walletManager)
-
-      // 使用钱包账户的 chainId 创建 UniversalAddress
-      // account.chainId 是原生链ID，createUniversalAddress 会自动转换为 SLIP-44
+      // 使用地址和 chainId 创建 UniversalAddress
+      // chainId 是原生链ID，createUniversalAddress 会自动转换为 SLIP-44
       // 这样 SDK 就能正确识别 TRON 地址（chainId=195）和 EVM 地址
       // 先检查地址格式
-      const isTronFormat = account.nativeAddress.length === 34 && account.nativeAddress.startsWith('T')
+      const isTronFormat = address.length === 34 && address.startsWith('T')
       
       console.log('[SDK Store] 📋 创建 UniversalAddress 前的信息:', {
-        nativeAddress: account.nativeAddress,
-        chainId: account.chainId,
-        universalAddress: account.universalAddress,
+        nativeAddress: address,
+        chainId: chainId,
         isTronFormat,
-        accountType: typeof account,
-        accountKeys: Object.keys(account),
       })
       
       let universalAddress
       try {
-        let baseAddress: any
-        
-        // 检查 account.universalAddress 是否是字符串格式 (chainId:address)
-        // 如果是，使用 parseUniversalAddress 解析；否则使用 createUniversalAddress 创建
-        if (account.universalAddress && typeof account.universalAddress === 'string' && account.universalAddress.includes(':')) {
-          // 字符串格式：'195:TW9nWM2AAewQyLV4xtysTtKJM2En2jyiW9'
-          console.log('[SDK Store] 🔧 使用 parseUniversalAddress 解析:', account.universalAddress)
-          universalAddress = parseUniversalAddress(account.universalAddress)
-          console.log('[SDK Store] ✅ parseUniversalAddress 结果:', {
-            chainId: universalAddress.chainId,
-            data: universalAddress.data,
-            extractedAddress: extractAddress(universalAddress),
-          })
-        } else {
-          // 使用 nativeAddress 和 chainId 创建 UniversalAddress
-          console.log('[SDK Store] 🔧 使用 createUniversalAddress 创建:', {
-            nativeAddress: account.nativeAddress,
-            chainId: account.chainId,
-          })
-          universalAddress = createUniversalAddress(account.nativeAddress, account.chainId)
-          console.log('[SDK Store] ✅ createUniversalAddress 结果:', {
-            chainId: universalAddress.chainId,
-            data: universalAddress.data,
-            extractedAddress: extractAddress(universalAddress),
-          })
-        }
+        // 使用 nativeAddress 和 chainId 创建 UniversalAddress
+        console.log('[SDK Store] 🔧 使用 createUniversalAddress 创建:', {
+          nativeAddress: address,
+          chainId: chainId,
+        })
+        universalAddress = createUniversalAddress(address, chainId)
+        console.log('[SDK Store] ✅ createUniversalAddress 结果:', {
+          chainId: universalAddress.chainId,
+          data: universalAddress.data,
+          extractedAddress: extractAddress(universalAddress),
+        })
       } catch (error) {
-        console.error('[SDK Store] UniversalAddress 创建/解析失败:', {
+        console.error('[SDK Store] UniversalAddress 创建失败:', {
           error,
-          nativeAddress: account.nativeAddress,
-          universalAddress: account.universalAddress,
-          chainId: account.chainId,
-          addressType: typeof account.nativeAddress,
-          universalAddressType: typeof account.universalAddress,
-          addressValue: JSON.stringify(account.nativeAddress),
-          universalAddressValue: JSON.stringify(account.universalAddress),
+          nativeAddress: address,
+          chainId: chainId,
           errorMessage: error instanceof Error ? error.message : String(error),
           errorStack: error instanceof Error ? error.stack : undefined,
         })
@@ -329,7 +241,7 @@ export class SDKStore {
           data: universalAddress.data,
           extractedAddress: extractAddress(universalAddress),
         },
-        expectedNativeAddress: account.nativeAddress,
+        expectedNativeAddress: address,
       })
 
       const sdk = new EnclaveClient({
@@ -393,21 +305,21 @@ export class SDKStore {
       // 验证 SDK 使用的地址是否正确
       const connectedAddress = sdk.address ? extractAddress(sdk.address) : null
       console.log('[SDK Store] 🔍 验证 SDK 连接后的地址:', {
-        expected: account.nativeAddress,
+        expected: address,
         actual: connectedAddress,
         sdkAddressObject: sdk.address ? {
           chainId: sdk.address.chainId,
           data: sdk.address.data,
           extractedAddress: extractAddress(sdk.address),
         } : null,
-        match: connectedAddress && connectedAddress.toLowerCase() === account.nativeAddress.toLowerCase(),
+        match: connectedAddress && connectedAddress.toLowerCase() === address.toLowerCase(),
       })
       
-      if (connectedAddress && connectedAddress.toLowerCase() !== account.nativeAddress.toLowerCase()) {
+      if (connectedAddress && connectedAddress.toLowerCase() !== address.toLowerCase()) {
         console.error('[SDK Store] ⚠️ SDK 连接后地址不匹配:', {
-          expected: account.nativeAddress,
+          expected: address,
           actual: connectedAddress,
-          expectedChainId: account.chainId,
+          expectedChainId: chainId,
           actualChainId: sdk.address?.chainId,
           expectedUniversalAddress: universalAddress ? {
             chainId: universalAddress.chainId,
@@ -418,7 +330,7 @@ export class SDKStore {
             data: sdk.address.data,
           } : null,
         })
-        throw new Error(`SDK 连接后地址不匹配: 期望 ${account.nativeAddress}, 实际 ${connectedAddress}`)
+        throw new Error(`SDK 连接后地址不匹配: 期望 ${address}, 实际 ${connectedAddress}`)
       }
       
       // 验证 apiClient 的认证 token 是否已更新
@@ -443,9 +355,9 @@ export class SDKStore {
         }
       }
 
-      // 保存 SDK 实例和 WalletManager 引用
+      // 保存 SDK 实例和 KeyManager 配置
       this.setSDK(sdk)
-      this._walletManager = walletManager
+      this._keyManagerConfig = { chainId, addressIndex }
       
       // 设置 JWT Token 过期时间（24小时）
       this.setTokenExpiry(24 * 60 * 60 * 1000) // 24小时 = 24 * 60 * 60 * 1000 毫秒
@@ -597,8 +509,8 @@ export class SDKStore {
       this.setSDK(null)
     }
     
-    // 清除 WalletManager 引用
-    this._walletManager = null
+    // 清除 KeyManager 配置
+    this._keyManagerConfig = null
     this.isConnected = false
     this.isLoading = false
     
@@ -769,13 +681,13 @@ export class SDKStore {
    * 刷新 token（重新认证）
    */
   private async refreshToken() {
-    if (!this._sdk || !this.isConnected || !this._walletManager) {
+    if (!this._sdk || !this.isConnected || !this._keyManagerConfig) {
       return
     }
 
     try {
       // 重新连接 SDK 以获取新的 token
-      await this.connect(this._walletManager)
+      await this.connect(this._keyManagerConfig.chainId, this._keyManagerConfig.addressIndex)
     } catch (error) {
       console.error('[SDK Store] JWT token 刷新失败:', error)
       // 刷新失败，清除过期时间，让用户重新连接

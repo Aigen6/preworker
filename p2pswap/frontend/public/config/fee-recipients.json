@@ -1,0 +1,52 @@
+[
+  {
+    "address": "0x0000000000000000000000000000000000000001",
+    "chainId": 714,
+    "label": "Fee Recipient 1"
+  },
+  {
+    "address": "0x0000000000000000000000000000000000000002",
+    "chainId": 714,
+    "label": "Fee Recipient 2"
+  },
+  {
+    "address": "0x0000000000000000000000000000000000000003",
+    "chainId": 714,
+    "label": "Fee Recipient 3"
+  },
+  {
+    "address": "0x0000000000000000000000000000000000000004",
+    "chainId": 714,
+    "label": "Fee Recipient 4"
+  },
+  {
+    "address": "0x0000000000000000000000000000000000000005",
+    "chainId": 714,
+    "label": "Fee Recipient 5"
+  },
+  {
+    "address": "0x0000000000000000000000000000000000000006",
+    "chainId": 714,
+    "label": "Fee Recipient 6"
+  },
+  {
+    "address": "0x0000000000000000000000000000000000000007",
+    "chainId": 714,
+    "label": "Fee Recipient 7"
+  },
+  {
+    "address": "0x0000000000000000000000000000000000000008",
+    "chainId": 714,
+    "label": "Fee Recipient 8"
+  },
+  {
+    "address": "0x0000000000000000000000000000000000000009",
+    "chainId": 714,
+    "label": "Fee Recipient 9"
+  },
+  {
+    "address": "0x000000000000000000000000000000000000000a",
+    "chainId": 714,
+    "label": "Fee Recipient 10"
+  }
+]

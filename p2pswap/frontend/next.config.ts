@@ -101,6 +101,7 @@ const nextConfig: NextConfig = {
       '@enclave-hq/wallet-sdk$': walletSdkIndexMjs,
       '@enclave-hq/wallet-sdk/react': walletSdkReactMjs,
       '@enclave-hq/chain-utils$': chainUtilsIndexMjs,
+      '@enclave/node-nft': path.resolve(__dirname, '../../../node-nft'),
     };
     
     if (!config.resolve.extensions?.includes('.mjs')) {
