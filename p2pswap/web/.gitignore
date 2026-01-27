@@ -1,0 +1,80 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env*.local
+
+# database
+# 忽略数据库文件，但保留目录结构
+/data/*.db
+/data/*.db-shm
+/data/*.db-wal
+*.db
+*.db-shm
+*.db-wal
+# 保留 .gitkeep 文件
+!/data/.gitkeep
+.env
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Intermediate summary and analysis documents (临时中间文档)
+*_SUMMARY.md
+*_ANALYSIS.md
+*_FIX.md
+*_DEBUG.md
+*_NOTES.md
+*_COMPARISON.md
+*_ROOT_CAUSE.md
+*_MISMATCH*.md
+*_FLOW.md
+*_DESIGN.md
+*_SETUP.md
+*_TROUBLESHOOTING.md
+*_RELEASE_NOTES.md
+*_COMPATIBILITY_REPORT.md
+*_UPDATE_SUMMARY.md
+*_INTEGRATION.md
+*_TEST_RESULTS.md
+*_VERIFICATION.md
+*_UPDATE_VERIFICATION.md
+COMMITMENT_*.md
+CREDENTIAL_*.md
+DEBUG_*.md
+NULLIFIER_*.md
+ANALYSIS_*.md
+CHECK_*.md
+FIX_*.md
+MIGRATION_*.md
+QUERY_*.md
+RESET_*.md
+VERIFY_*.md
+apply-migration-*.md
